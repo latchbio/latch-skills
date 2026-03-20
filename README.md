@@ -11,6 +11,7 @@ Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (`n
 | **latch-data-access** | Browse and select files from Latch Data, Registry tables, and DataFrames. Includes LPath utilities for working with `latch://` paths. |
 | **latch-plots-ui** | Render plots, tables, AnnData viewers, IGV browsers, and interactive input widgets in Latch Plots notebooks. |
 | **latch-workflows** | Launch and monitor bioinformatics workflows on Latch from agent code — including parameter construction, validation, and output retrieval. |
+| **latch-curation** | Curate external datasets (GEO/GSE, collaborator uploads) into Latch-compatible AnnData with Ensembl gene IDs and ontology-annotated metadata. Includes GEO download, gene ID conversion, and validation libraries. |
 
 ## Getting started
 
