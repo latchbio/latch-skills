@@ -1,0 +1,69 @@
+{
+  "organism": "Mus musculus",
+  "tissue": "kidney",
+  "panel_name": "xenium_mouse_kidney",
+  "allowed_vocab": [
+    "podocyte",
+    "glomerular endothelial cells",
+    "non glomerular endothelial cells",
+    "proximal tubule cells",
+    "loop of Henle cells",
+    "distal convoluted tubule cells",
+    "connecting tubule / collecting duct principal cells",
+    "collecting duct intercalated cells",
+    "parietal epithelial cells",
+    "urothelial cells",
+    "fibroblasts",
+    "pericyte / smooth muscle cells"
+  ],
+  "mapping_rules": [
+    {
+      "pattern": "podocyte|pod cell|visceral epithelial cell|\\bPod\\b|Podo",
+      "label": "podocyte"
+    },
+    {
+      "pattern": "glomerular endothelial|glomerular capillary endothelial|Glom-EC|glomerular EC",
+      "label": "glomerular endothelial cells"
+    },
+    {
+      "pattern": "non-glomerular endothelial|peritubular capillary|peritubular endothelial|non-glom EC|vasa recta|vascular endothelial",
+      "label": "non glomerular endothelial cells"
+    },
+    {
+      "pattern": "proximal tubule|prox tubule|PT S1|PT S2|PT S3|PTS1|PTS2|PTS3|Inj-PT|injured proximal|FR-PT|fatty remodeled PT",
+      "label": "proximal tubule cells"
+    },
+    {
+      "pattern": "descending thin limb|DTL|thin descending limb|ascending thin limb|loop of Henle|TAL|thick ascending limb",
+      "label": "loop of Henle cells"
+    },
+    {
+      "pattern": "distal convoluted tubule|DCT|macula densa",
+      "label": "distal convoluted tubule cells"
+    },
+    {
+      "pattern": "connecting tubule|CNT|collecting duct principal|principal cell|\\bPC\\b",
+      "label": "connecting tubule / collecting duct principal cells"
+    },
+    {
+      "pattern": "intercalated cell|IC A|IC B|ICA\\b|ICB\\b|alpha intercalated|beta intercalated",
+      "label": "collecting duct intercalated cells"
+    },
+    {
+      "pattern": "parietal epithelial cell|parietal epithelium|PEC\\b|Bowman",
+      "label": "parietal epithelial cells"
+    },
+    {
+      "pattern": "urothelium|urothelial",
+      "label": "urothelial cells"
+    },
+    {
+      "pattern": "fibroblast|Fib\\b|mesenchymal cell",
+      "label": "fibroblasts"
+    },
+    {
+      "pattern": "pericyte|Per-SMC|smooth muscle cell|vascular smooth muscle|mural cell",
+      "label": "pericyte / smooth muscle cells"
+    }
+  ]
+}

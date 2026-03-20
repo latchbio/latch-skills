@@ -1,0 +1,45 @@
+{
+  "organism": "Mus musculus",
+  "tissue": "brain",
+  "panel_name": "xenium_full_brain",
+  "allowed_vocab": [
+    "astrocyte",
+    "excitatory neurons",
+    "inhibitory neurons",
+    "microglia",
+    "oligodendrocyte precursor cells (OPC)",
+    "oligodendrocytes",
+    "pericyte / endothelial cells",
+    "fibroblasts"
+  ],
+  "mapping_rules": [
+    {
+      "pattern": "pyramidal|glutamatergic|excitatory neuron|IT neuron|PT neuron|corticothalamic",
+      "label": "excitatory neurons"
+    },
+    {
+      "pattern": "inhibitory neuron|gaba|gabaergic|interneuron|purkinje|basket cell|chandelier|martinotti",
+      "label": "inhibitory neurons"
+    },
+    {
+      "pattern": "astrocyte|astroglia|bergmann",
+      "label": "astrocyte"
+    },
+    {
+      "pattern": "oligodendrocyte precursor|opc|ng2",
+      "label": "oligodendrocyte precursor cells (OPC)"
+    },
+    {
+      "pattern": "oligodendrocyte|myelinating oligodendrocyte",
+      "label": "oligodendrocytes"
+    },
+    {
+      "pattern": "microglia|brain macrophage|mononuclear phagocyte",
+      "label": "microglia"
+    },
+    {
+      "pattern": "endothelial|pericyte|mural cell|vascular smooth muscle",
+      "label": "pericyte / endothelial cells"
+    }
+  ]
+}

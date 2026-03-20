@@ -12,6 +12,10 @@ Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (`n
 | **latch-plots-ui** | Render plots, tables, AnnData viewers, IGV browsers, and interactive input widgets in Latch Plots notebooks. |
 | **latch-workflows** | Launch and monitor bioinformatics workflows on Latch from agent code — including parameter construction, validation, and output retrieval. |
 | **latch-curation** | Curate external datasets (GEO/GSE, collaborator uploads) into Latch-compatible AnnData with Ensembl gene IDs and ontology-annotated metadata. Includes GEO download, gene ID conversion, and validation libraries. |
+| **takara-devkit** | Analyze Takara Seeker/Trekker spatial transcriptomics data — QC, background removal, normalization, clustering, differential expression, and cell typing. |
+| **vizgen-devkit** | Analyze Vizgen MERFISH spatial transcriptomics data — cell segmentation, preprocessing, QC, spatial analysis, and secondary analysis. |
+| **xenium-devkit** | Analyze 10x Genomics Xenium in situ data — data preparation, preprocessing, differential expression, cell type annotation, and domain detection. |
+| **atlasx-devkit** | Analyze AtlasXomics spatial epigenomics (ATAC-seq) data — QC, clustering, differential analysis, and cell type annotation. |
 
 ## Getting started
 
@@ -49,10 +53,21 @@ Reference documentation here.
 
 ```
 latch-skills/
+├── atlasx-devkit/
+│   └── SKILL.md, steps/, wf/
+├── latch-curation/
+│   ├── SKILL.md
+│   └── lib/curate/
 ├── latch-data-access/
 │   └── SKILL.md
 ├── latch-plots-ui/
 │   └── SKILL.md
-└── latch-workflows/
-    └── SKILL.md
+├── latch-workflows/
+│   └── SKILL.md
+├── takara-devkit/
+│   └── SKILL.md, steps/, wf/, lib/
+├── vizgen-devkit/
+│   └── SKILL.md, steps/, wf/
+└── xenium-devkit/
+    └── SKILL.md, steps/, wf/, lib/
 ```

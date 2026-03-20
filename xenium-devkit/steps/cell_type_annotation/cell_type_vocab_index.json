@@ -1,0 +1,16 @@
+{
+  "configs": [
+    {
+      "organism": "Mus musculus",
+      "tissue": "brain",
+      "panel_name": "xenium_full_brain",
+      "path": "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/xenium/steps/cell_type_annotation/cell_type_vocab_mus_musculus_brain.json"
+    },
+    {
+      "organism": "Mus musculus",
+      "tissue": "kidney",
+      "panel_name": "xenium_mouse_kidney",
+      "path": "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/xenium/steps/cell_type_annotation/cell_type_vocab_mus_musculus_kidney.json"
+    }
+  ]
+}
