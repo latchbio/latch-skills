@@ -1,6 +1,6 @@
 # Latch Skills
 
-Skills for building on the [Latch](https://latch.bio) platform using any agent environment that supports the [Claude Agent SDK skill format](https://docs.anthropic.com/en/docs/claude-code/skills) — including Claude Code, Latch Plots, and custom agent setups.
+Skills for building on the [Latch](https://latch.bio) platform using any agent environment that supports the [Claude Agent SDK skill format](https://docs.anthropic.com/en/docs/claude-code/skills) — including Claude Code, OpenAI Codex, Latch Plots, and custom agent setups.
 
 Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (`name`, `description`) and complete API reference documentation that the agent loads on demand.
 
