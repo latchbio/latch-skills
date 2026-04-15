@@ -54,6 +54,12 @@ Turn reads (FastQs) into counts
 <outputs>
 </outputs>
 
+<instructions>
+After collecting all required parameters from the user, confirm they are ready before executing the pipeline. Say:
+> "All parameters are set. Let me know when you're ready to start the Seeker pipeline."
+Only generate and execute the code cell below once the user confirms.
+</instructions>
+
 <example>
 ```python
 from dataclasses import dataclass
@@ -71,17 +77,17 @@ class Sample:
 params = {
     "input": [
         Sample(
-            sample="Mouse_spleen_1m",
-            experiment_date="2023-07-19",
-            tile_id="A0010_039",
-            fastq_1=LatchFile("latch://38771.account/Seeker_Example_Datasets/Mouse_spleen_1m_R1.fastq.gz"),
-            fastq_2=LatchFile("latch://38771.account/Seeker_Example_Datasets/Mouse_spleen_1m_R2.fastq.gz"),
+            sample="",                              # required — sample name, no spaces
+            experiment_date="YYYYMMDD",             # required — "YYYYMMDD"
+            tile_id="",                             # required — e.g. "A0010_039"
+            fastq_1=LatchFile("latch://..."),       # required — set by user
+            fastq_2=LatchFile("latch://..."),       # required — set by user
         )
     ],
-    "genome": "GRCm38",
+    "genome": "",                                   # required — set by user
     "genome_choice": "PREBUILT",
-    "execution_name": "<execution_name>",         # required — set by user
-    "outdir": LatchDir("<latch://...>"),           # required — set by user
+    "execution_name": "",                           # required — set by user
+    "outdir": LatchDir("latch://..."),              # required — set by user
 }
 
 w = w_workflow(

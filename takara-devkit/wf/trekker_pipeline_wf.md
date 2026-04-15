@@ -71,20 +71,26 @@ Turn reads (FastQs) into counts
 <outputs>
 </outputs>
 
+<instructions>
+After collecting all required parameters from the user, confirm they are ready before executing the pipeline. Say:
+> "All parameters are set. Let me know when you're ready to start the Trekker pipeline."
+Only generate and execute the code cell below once the user confirms.
+</instructions>
+
 <example>
 ```python
 from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
 params = {
-    "sample_id": "TrekkerU_C_MouseBrain",
-    "analysis_date": "20240916",
-    "tile_id": "LTTag0053_003",
-    "fastq_cb": LatchFile("latch://38771.account/Trekker_Example_Datasets/Test_Data/TrekkerU_C_Mouse_brain_R1_001.fastq.gz"),
-    "fastq_tags": LatchFile("latch://38771.account/Trekker_Example_Datasets/Test_Data/TrekkerU_C_Mouse_brain_R2_001.fastq.gz"),
-    "sc_outdir": LatchDir("latch://38771.account/Trekker_Example_Datasets/Test_Data/scRNAseq"),
-    "sc_platform": "TrekkerU_C",
-    "output_dir": LatchDir("latch://38771.account/Trekker_Example_Datasets/Test_Data/")
+    "sample_id": "",                            # required — set by user
+    "analysis_date": "YYYYMMDD",                # required — "YYYYMMDD"
+    "tile_id": "",                              # required — set by user
+    "fastq_cb": LatchFile("latch://..."),       # required — set by user
+    "fastq_tags": LatchFile("latch://..."),     # required — set by user
+    "sc_outdir": LatchDir("latch://..."),       # required — set by user
+    "sc_platform": "",                          # required — set by user
+    "output_dir": LatchDir("latch://..."),      # required — set by user
 }
 
 w = w_workflow(
