@@ -2,6 +2,25 @@
 Turn reads (FastQs) into counts
 </goal>
 
+<pre_pipeline_questions>
+Before collecting any pipeline parameters, ask the user the following questions **in order**:
+
+1. **Which single-cell platform was used?**
+   Present the full `sc_platform` table from the parameters section below and ask the user to identify their platform.
+   - If the selected platform is **TrekkerFX_FLEX**, **TrekkerU_PIP**, or **TrekkerQ_P**: run the corresponding preprocessing workflow first (see the platform-specific notes in the parameters section), then return here to continue with questions 2 and 3.
+   - All other platforms: proceed directly to question 2.
+
+2. **Multiple reactions?**
+   > "Was the experiment for this Trekker tile split into multiple single-nuclei reactions (i.e. processed with different sample indices during sequencing)?"
+   - If **yes**: plan to run the Trekker pipeline once per reaction and merge the outputs afterward using `wf/trekker_merger_wf.md`. Inform the user now so they can plan sample IDs and output directories for each reaction.
+
+3. **Multiple lanes / multiple FASTQ files?**
+   > "Do you have multiple R1 (or R2) FASTQ files for this sample — for example, from sequencing the same reaction across multiple lanes?"
+   - If **yes**: concatenate R1 files into one file and R2 files into one file using `wf/fastq_concatenator_wf.md` **before** proceeding. Use the merged FASTQs as inputs.
+
+Only proceed to collect the remaining Trekker pipeline parameters after all three questions are resolved and any required preprocessing or concatenation is complete.
+</pre_pipeline_questions>
+
 <parameters>
 - Every Trekker sample has **two FASTQ files** (paired-end sequencing).
   - **Read 1** → maps to workflow param `fastq_cb`
@@ -12,21 +31,49 @@ Turn reads (FastQs) into counts
   - Must be normalized to string format `"YYYYMMDD"` when inserted into params.
 - **Tile ID** → `tile_id`
 - **Single-cell platform** → `sc_platform`
-  - Ask the user which single-cell platform was used and map their answer to the correct string below. Present all 11 options to the user:
+  - This should already be known from the pre-pipeline questions. Map the user's platform to the correct string below.
+  - Three platforms require a preprocessing workflow before Trekker can run — these are called out first:
+
+    **Platforms requiring preprocessing (must be run before Trekker):**
+
+    | String value | Platform | Preprocessing workflow |
+    |---|---|---|
+    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex v1 | `wf/trekker_fxflex_demux_wf.md` |
+    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) | `wf/trekker_upip_preprocess_wf.md` |
+    | `"TrekkerQ_P"` | Parse Evercode WT v3 | `wf/trekker_qp_demux_wf.md` |
+
+    **All platforms:**
+
+    *10x Chromium*
 
     | String value | Platform |
     |---|---|
     | `"TrekkerU_C"` | 10x Chromium Next GEM 3'v3.1 |
     | `"TrekkerU_CX"` | 10x Chromium GEM-X 3'v4 |
     | `"Trekker5C_CX"` | 10x Chromium, 5' |
-    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex v1 ⚠️ *requires preprocessing — see below* |
+    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex v1 ⚠️ |
     | `"TrekkerU_M"` | 10x Chromium Multiome ATAC + Gene Expression |
+
+    *BD Rhapsody*
+
+    | String value | Platform |
+    |---|---|
     | `"TrekkerU_R"` | BD Rhapsody WTA |
     | `"TrekkerU_RVDJ"` | BD Rhapsody TCR/BCR Next + mRNA WTA |
     | `"TrekkerU_RATAC"` | BD Rhapsody ATAC-Seq + mRNA WTA |
+
+    *Illumina*
+
+    | String value | Platform |
+    |---|---|
     | `"TrekkerU_IL"` | Illumina Single Cell 3' RNA Prep (DRAGEN) |
-    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) ⚠️ *requires preprocessing — see below* |
-    | `"TrekkerQ_P"` | Parse Evercode WT v3 ⚠️ *requires preprocessing — see below* |
+    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) ⚠️ |
+
+    *Parse*
+
+    | String value | Platform |
+    |---|---|
+    | `"TrekkerQ_P"` | Parse Evercode WT v3 ⚠️ |
 
 - **Input directory** (directory on Latch Data that stores the output of the single-cell platform used during the Trekker experiment) → `sc_outdir` (`LatchDir`)
 - **Output directory** (where to save Trekker workflow results) → `output_dir` (`LatchDir`)

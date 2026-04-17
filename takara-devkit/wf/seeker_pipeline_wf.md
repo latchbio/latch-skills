@@ -2,6 +2,15 @@
 Turn reads (FastQs) into counts
 </goal>
 
+<pre_pipeline_questions>
+Before collecting any pipeline parameters, ask the user:
+
+> "Do you have multiple R1 (or R2) FASTQ files for this sample — for example, from sequencing the same reaction across multiple lanes for a single tile?"
+- If **yes**: concatenate the R1 files into one file and the R2 files into one file using `wf/fastq_concatenator_wf.md` **before** proceeding. Use the concatenated FASTQs as input to the Seeker pipeline.
+
+Only proceed to collect Seeker pipeline parameters after this is resolved and any required concatenation is complete.
+</pre_pipeline_questions>
+
 <parameters>
 - Every Seeker sample has **two FASTQ files** (paired-end sequencing).
   - **Read 1** → `fastq_1` field of `Sample`

@@ -2,13 +2,12 @@
 - Are you starting with raw fastq files or do you already have an H5AD file ready for secondary analysis?
 
 If **raw fastq**:
-  - Is the kit type Seeker 3x3, Seeker 10x10 or Trekker?
-  - If Seeker → run Seeker workflow
-  - If Trekker → run Trekker workflow
+  - Is the kit type Seeker or Trekker?
+  - If Seeker → follow `wf/seeker_pipeline_wf.md`
+  - If Trekker → follow `wf/trekker_pipeline_wf.md`
   - Then proceed with the Primary Analysis plan.
 
 If **H5AD** (secondary analysis):
-  - Is the kit type Seeker 3x3, Seeker 10x10 or Trekker? (*ONLY ask if not yet known*)
   - Does the H5AD have one or multiple samples?
   - What tissue and disease conditions describe your data?
   - Proceed with the Secondary Analysis plan.
