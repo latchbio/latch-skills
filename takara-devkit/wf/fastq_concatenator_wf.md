@@ -25,9 +25,34 @@ After both runs complete, feed the merged R1 file as `fastq_cb` (Trekker) or `fa
 </outputs>
 
 <instructions>
-Run the workflow twice — first for R1 files, then for R2 files. Collect all parameters before executing either run. Confirm with the user before executing each run:
-> "Ready to concatenate the R1 files. Let me know when you'd like to proceed."
-> "Ready to concatenate the R2 files. Let me know when you'd like to proceed."
+**Step 1 — Collect all files**
+
+Ask the user to provide all R1 files and all R2 files before doing anything else. Do not proceed until both lists are in hand.
+
+**Step 2 — Pair and sort**
+
+Match each R1 file to its corresponding R2 file. Use the lane identifier embedded in the filename (e.g. `_L001_`, `_L002_`) as the sort key. Sort all pairs together by that key in ascending order. If no lane identifier is present, sort lexicographically by filename and note the assumption.
+
+**Step 3 — Show confirmation table**
+
+Display the proposed pairing to the user as a table before submitting any job:
+
+```
+Order | R1 file                         | R2 file
+------|---------------------------------|---------------------------------
+1     | sample_L001_R1_001.fastq.gz     | sample_L001_R2_001.fastq.gz
+2     | sample_L002_R1_001.fastq.gz     | sample_L002_R2_001.fastq.gz
+...
+```
+
+Then ask:
+> "Does this pairing and order look correct? If not, describe any corrections (e.g. 'swap rows 2 and 3' or 'row 1 R2 should be `sample_L001_R2_002.fastq.gz`') and I'll update before proceeding."
+
+Repeat — update the table and ask again — until the user confirms the order is correct. Do not submit either run until confirmation is given.
+
+**Step 4 — Execute both runs in parallel**
+
+Submit the R1 and R2 runs simultaneously. Use the same row order from the confirmed table for both `fastq_files` lists. Await both executions together before reporting results.
 </instructions>
 
 <example>
@@ -49,17 +74,14 @@ params_r1 = {
 w_r1 = w_workflow(
     wf_name="wf.__init__.concatenate",
     key="fastq_concat_r1_run_1",
-    version="1.1.9",
+    version="1.1.9-e2ce84",
     params=params_r1,
     automatic=True,
     label="Concatenate R1 FASTQs",
 )
 execution_r1 = w_r1.value
 
-if execution_r1 is not None:
-    res_r1 = await execution_r1.wait()
-
-# Run 2: concatenate all R2 files
+# Run 2: concatenate all R2 files (submitted in parallel with Run 1)
 params_r2 = {
     "fastq_files": [
         LatchFile("latch://..."),   # first R2 file
@@ -80,10 +102,8 @@ w_r2 = w_workflow(
 )
 execution_r2 = w_r2.value
 
-if execution_r2 is not None:
-    res_r2 = await execution_r2.wait()
-
-    if res_r2 is not None and res_r2.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        workflow_outputs = list(res_r2.output.values())
+# Await both runs together
+if execution_r1 is not None and execution_r2 is not None:
+    res_r1, res_r2 = await asyncio.gather(execution_r1.wait(), execution_r2.wait())
 ```
 </example>
