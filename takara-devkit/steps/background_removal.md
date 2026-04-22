@@ -79,3 +79,9 @@ log10_umi.hist(bins=100)
 <self_eval_criteria>
 - Difficult to check without understanding what portion of slide covered with tissue
 </self_eval_criteria>
+
+<long_running_guidance>
+If adata.n_obs > 200000, display this message to the user after running the background removal cell:
+
+"Your Background Removal analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
+</long_running_guidance>

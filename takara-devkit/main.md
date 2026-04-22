@@ -14,9 +14,6 @@ If **H5AD** (secondary analysis):
 </pre_analysis_questions>
 
 <pre_analysis_step>
-MANDATORY: Invoke the `redeem_package` tool to install required Takara tools into the workspace.
-  - `package_code`: `3015c6c63ecc3f2cd410ea340a36af05777`
-  - `package_version_id`: `192`
 </pre_analysis_step>
 
 <plan id="primary_analysis" label="Primary Analysis">

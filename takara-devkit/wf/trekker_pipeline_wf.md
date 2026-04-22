@@ -158,3 +158,9 @@ if execution is not None:
         workflow_outputs = list(res.output.values())
 ```
 </example>
+
+<long_running_guidance>
+After launching the workflow execution, display this message to the user:
+
+"The Trekker pipeline is now running on Latch compute and will take some time to finish. It is safe to close this tab while the workflow runs. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, reopen the notebook and the agent will resume from where you left off."
+</long_running_guidance>
