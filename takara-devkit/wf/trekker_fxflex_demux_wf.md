@@ -77,9 +77,9 @@ class SampleLabels:
     AB016: str = ""
 
 params = {
-    "fastq_r1": LatchFile("latch://38771.account/.../sample_R1.fastq.gz"),
-    "fastq_r2": LatchFile("latch://38771.account/.../sample_R2.fastq.gz"),
-    "output_directory": LatchDir("<latch://...>"),   # required — set by user
+    "fastq_r1": LatchFile("latch://..."),             # required — set by user
+    "fastq_r2": LatchFile("latch://..."),             # required — set by user
+    "output_directory": LatchDir("latch://..."),      # required — set by user
     "sample_labels": SampleLabels(
         AB001="TumorSample",
         AB002="NormalSample",

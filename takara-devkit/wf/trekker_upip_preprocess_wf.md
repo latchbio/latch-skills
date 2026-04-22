@@ -52,11 +52,11 @@ from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
 params = {
-    "fastq_dir": LatchDir("latch://38771.account/.../pip_fastqs/"),
+    "fastq_dir": LatchDir("latch://..."),           # required — set by user
     "fastq_prefix": "sample1",
-    "sc_directory": LatchDir("latch://38771.account/.../fluent_sc_output/"),
-    "chemistry": "V",                             # "V", "v3", or "v4"
-    "output_directory": LatchDir("<latch://...>"),  # required — set by user
+    "sc_directory": LatchDir("latch://..."),        # required — set by user
+    "chemistry": "V",                               # "V", "v3", or "v4"
+    "output_directory": LatchDir("latch://..."),    # required — set by user
 }
 
 w = w_workflow(

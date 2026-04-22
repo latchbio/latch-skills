@@ -69,10 +69,10 @@ class WellLabels:
     labels: List[LabelInfo] = field(default_factory=list)
 
 params = {
-    "fastq_r1": LatchFile("latch://38771.account/.../sample_R1.fastq.gz"),
-    "fastq_r2": LatchFile("latch://38771.account/.../sample_R2.fastq.gz"),
-    "output_directory": LatchDir("<latch://...>"),   # required — set by user
-    "chemistry": "v3",                               # "v1", "v2", or "v3"
+    "fastq_r1": LatchFile("latch://..."),             # required — set by user
+    "fastq_r2": LatchFile("latch://..."),             # required — set by user
+    "output_directory": LatchDir("latch://..."),      # required — set by user
+    "chemistry": "v3",                                # "v1", "v2", or "v3"
     "well_labels": WellLabels(labels=[
         LabelInfo(group="group_1", wells="A1-A6"),
         LabelInfo(group="group_2", wells="B1-B6"),

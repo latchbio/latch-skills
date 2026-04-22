@@ -1,5 +1,5 @@
 <goal>
-Remove off-tissue background beads from Curio Seeker spatial transcriptomics data.
+Remove off-tissue background beads from Seeker spatial transcriptomics data.
 
 **Seeker only** — skip this step entirely if the data was generated with the Trekker kit.
 If Trekker, proceed directly to the next step (Quality Control + Filtering).
