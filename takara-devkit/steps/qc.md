@@ -11,6 +11,12 @@ For each of "genes per bead", "mitochondrial percentage" and "total UMIs" do the
 4/ Tell the user how many beads will be removed after applying this value
 5/ Inform the user that thresholds should be chosen that mess with the spatial morphology the least
 
+For the "total UMIs" method specifically, also generate a knee plot:
+- X-axis: bead rank (sorted by UMI count descending, so rank 1 = highest UMI count)
+- Y-axis: total UMIs
+- Both axes in log scale
+- The knee/inflection point visually indicates a natural UMI threshold separating real beads from empty droplets/background
+
 Start with "genes per bead" and go one at a time.
 
 Always use text input widgets for precise viewing and manipulation of threshold values (instead of eg. sliders)

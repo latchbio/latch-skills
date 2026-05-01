@@ -2,7 +2,7 @@
 
 ## Repo Structure
 
-This repo is for the Latch Agent to work specifically with the Takara Seeker platform.
+This repo is for the Latch Agent to work specifically with the Takara Seeker and Trekker platforms.
 
 Each Devkit has the following components:
 - `main.md`

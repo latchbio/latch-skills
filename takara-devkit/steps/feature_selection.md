@@ -28,3 +28,9 @@ sc.pp.highly_variable_genes(
 <self_eval_criteria>
 - ensure biologically meaningful genes, dependent on your tissue / disease context, show up immediately in the HVGs ranked by variance
 </self_eval_criteria>
+
+<long_running_guidance>
+If adata.n_obs > 200000, display this message to the user after running the feature selection cell:
+
+"Your Feature Selection analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
+</long_running_guidance>

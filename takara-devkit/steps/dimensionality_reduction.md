@@ -29,3 +29,9 @@ Make sure number of PCs chosen at point of loss of:
 2/ UMAP
 - Chosen parameters achieve best separation of tissue/disease specific markers
 </self_eval_criteria>
+
+<long_running_guidance>
+If adata.n_obs > 200000, display this message to the user after running the UMAP cell:
+
+"Your Dimensionality Reduction analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
+</long_running_guidance>
