@@ -68,9 +68,9 @@ params = {
 }
 
 w = w_workflow(
-    wf_name="wf.__init__.trekker_merger",
+    wf_name="trekker_merger",
     key="trekker_merger_run_1",
-    version="0.1.2-7a97dd",
+    version="1.4.6-0eab98",
     params=params,
     automatic=True,
     label="Trekker Merger",
