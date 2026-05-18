@@ -1,16 +1,17 @@
 <pre_analysis_questions>
-- Are you starting with raw fastq files or do you already have an H5AD file ready for secondary analysis?
+There are exactly two valid starting points:
 
-If **raw fastq**:
-  - Is the kit type Seeker or Trekker?
-  - If Seeker → follow `wf/seeker_pipeline_wf.md`
-  - If Trekker → follow `wf/trekker_pipeline_wf.md`
-  - Then proceed with the Primary Analysis plan.
+1. **Primary Analysis** — starting with raw FASTQ files (the Seeker or Trekker pipeline has not been run yet).
+   - Is the kit type Seeker or Trekker?
+   - If Seeker → follow `wf/seeker_pipeline_wf.md`
+   - If Trekker → follow `wf/trekker_pipeline_wf.md`
+   - Then proceed with the Primary Analysis plan.
 
-If **H5AD** (secondary analysis):
-  - Does the H5AD have one or multiple samples?
-  - What tissue and disease conditions describe your data?
-  - Proceed with the Secondary Analysis plan.
+2. **Secondary Analysis** — starting with an H5AD file (either produced by a completed Seeker/Trekker pipeline run or provided directly).
+   - A successful primary analysis pipeline run always produces an H5AD; if no H5AD is present the primary analysis pipeline did not complete successfully and the user must re-run it (starting point 1).
+   - Does the H5AD have one or multiple samples?
+   - What tissue and disease conditions describe your data?
+   - Proceed with the Secondary Analysis plan.
 </pre_analysis_questions>
 
 <pre_analysis_step>
