@@ -8,11 +8,14 @@ Before collecting any pipeline parameters, ask the user the following questions 
 1. **Which single-cell platform was used?**
    Present the full `sc_platform` table from the parameters section below and ask the user to identify their platform.
    - If the selected platform is **TrekkerFX_FLEX**, **TrekkerU_PIP**, or **TrekkerQ_P**: run the corresponding preprocessing workflow first (see the platform-specific notes in the parameters section), then return here to continue with questions 2 and 3.
-   - All other platforms: proceed directly to question 2.
+   - All other platforms: proceed directly to question 2 and 3.
 
 2. **Multiple reactions?**
    > "Was the experiment for this Trekker tile split into multiple single-nuclei reactions (i.e. processed with different sample indices during sequencing)?"
-   - If **yes**: launch all Trekker pipeline executions in parallel (one per reaction) and await them all together before merging with `wf/trekker_merger_wf.md`. Inform the user now so they can plan sample IDs and output directories for each reaction.
+   - If **yes**: ask the user whether all reactions share the **same tile ID** or span **multiple tile IDs**.
+     - **Same tile ID**: recommend to launch all Trekker pipeline executions in parallel (one per reaction) and await them all together, then run a **single** `wf/trekker_merger_wf.md` to merge all outputs.
+     - **Multiple tile IDs**: recommend to launch all Trekker pipeline executions in parallel and await them together, then run a **separate** `wf/trekker_merger_wf.md` for **each tile ID group** — only merge outputs that share the same tile ID. Inform the user that they will need one merged sample ID and output directory per tile group.
+   - Inform the user now so they can plan sample IDs, tile IDs, and output directories for each reaction.
 
 3. **Multiple lanes / multiple FASTQ files?**
    > "Do you have multiple R1 (or R2) FASTQ files for this sample — for example, from sequencing the same reaction across multiple lanes?"
