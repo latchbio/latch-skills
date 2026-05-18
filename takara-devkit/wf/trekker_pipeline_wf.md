@@ -12,7 +12,7 @@ Before collecting any pipeline parameters, ask the user the following questions 
 
 2. **Multiple reactions?**
    > "Was the experiment for this Trekker tile split into multiple single-nuclei reactions (i.e. processed with different sample indices during sequencing)?"
-   - If **yes**: plan to run the Trekker pipeline once per reaction and merge the outputs afterward using `wf/trekker_merger_wf.md`. Inform the user now so they can plan sample IDs and output directories for each reaction.
+   - If **yes**: launch all Trekker pipeline executions in parallel (one per reaction) and await them all together before merging with `wf/trekker_merger_wf.md`. Inform the user now so they can plan sample IDs and output directories for each reaction.
 
 3. **Multiple lanes / multiple FASTQ files?**
    > "Do you have multiple R1 (or R2) FASTQ files for this sample — for example, from sequencing the same reaction across multiple lanes?"
@@ -125,7 +125,9 @@ Only generate and execute the code cell below once the user confirms.
 </instructions>
 
 <example>
+Single reaction:
 ```python
+import asyncio
 from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
@@ -154,8 +156,58 @@ if execution is not None:
     res = await execution.wait()
 
     if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        # inspect workflow outputs for downstream analysis
         workflow_outputs = list(res.output.values())
+```
+
+Multiple reactions (launch all in parallel, await together):
+```python
+import asyncio
+from lplots.widgets.workflow import w_workflow
+from latch.types import LatchFile, LatchDir
+
+all_params = [
+    {
+        "sample_id": "reaction_1",
+        "analysis_date": "YYYYMMDD",
+        "tile_id": "",
+        "fastq_cb": LatchFile("latch://..."),
+        "fastq_tags": LatchFile("latch://..."),
+        "sc_outdir": LatchDir("latch://..."),
+        "sc_platform": "",
+        "output_dir": LatchDir("latch://..."),
+    },
+    {
+        "sample_id": "reaction_2",
+        "analysis_date": "YYYYMMDD",
+        "tile_id": "",
+        "fastq_cb": LatchFile("latch://..."),
+        "fastq_tags": LatchFile("latch://..."),
+        "sc_outdir": LatchDir("latch://..."),
+        "sc_platform": "",
+        "output_dir": LatchDir("latch://..."),
+    },
+    # add one entry per reaction
+]
+
+executions = []
+for i, params in enumerate(all_params, start=1):
+    w = w_workflow(
+        wf_name="wf.__init__.trekker_pipeline_wf",
+        key=f"trekker_workflow_run_{i}",
+        version="1.4.0-cd747c",
+        params=params,
+        automatic=True,
+        label=f"Trekker workflow — reaction {i}",
+    )
+    if w.value is not None:
+        executions.append(w.value)
+
+results = await asyncio.gather(*[e.wait() for e in executions])
+workflow_outputs = [
+    list(res.output.values())
+    for res in results
+    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}
+]
 ```
 </example>
 

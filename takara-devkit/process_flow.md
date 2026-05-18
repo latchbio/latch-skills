@@ -39,17 +39,16 @@ flowchart TD
     QP     --> TK_RXNS
 
     TK_RXNS{Multiple\nreactions?}:::decision
-    TK_RXNS -->|Yes — plan one run\nper reaction| TK_LANES
+    TK_RXNS -->|Yes — launch all reactions\nin parallel| TK_LANES
     TK_RXNS -->|No| TK_LANES
 
     TK_LANES{Multiple\nlanes?}:::decision
     TK_LANES -->|Yes| TK_CONCAT[fastq_concatenator_wf\nConcatenate FASTQ lanes]:::wf
     TK_LANES -->|No| TK_WF
-    TK_CONCAT --> TK_WF[trekker_pipeline_wf\nReads → Counts]:::wf
+    TK_CONCAT --> TK_WF[trekker_pipeline_wf ×N\nLaunch all in parallel\nthen await together]:::wf
 
     TK_WF --> TK_MERGE_Q{Were multiple\nreactions run?}:::decision
-    TK_MERGE_Q -->|Yes — repeat pipeline\nfor each reaction| TK_WF
-    TK_MERGE_Q -->|All done — merge| TK_MERGE[trekker_merger_wf\nMerge reaction outputs]:::wf
+    TK_MERGE_Q -->|Yes — all done — merge| TK_MERGE[trekker_merger_wf\nMerge reaction outputs]:::wf
     TK_MERGE_Q -->|No — single reaction| TK_OUT
     TK_MERGE --> TK_OUT[(H5AD + QC Report)]:::output
     TK_OUT --> TK_VIEW[view_report\nInspect QC metrics]:::step
@@ -100,10 +99,10 @@ flowchart TD
 `FastQ` → *(optional)* `fastq_concatenator` → `seeker_pipeline` → `H5AD`
 
 **Primary Analysis — Trekker (standard platforms)**
-`FastQ` → *(optional)* `fastq_concatenator` → `trekker_pipeline` → *(optional)* `trekker_merger` → `H5AD`
+`FastQ` → *(optional)* `fastq_concatenator` → `trekker_pipeline` *(parallel if multiple reactions)* → *(optional)* `trekker_merger` → `H5AD`
 
 **Primary Analysis — Trekker (platforms requiring preprocessing)**
-`FastQ` → `{fxflex|upip|qp}_demux/preprocess` → `fastq_concatenator?` → `trekker_pipeline` → `trekker_merger?` → `H5AD`
+`FastQ` → `{fxflex|upip|qp}_demux/preprocess` → `fastq_concatenator?` → `trekker_pipeline ×N` *(all launched in parallel, awaited together)* → `trekker_merger?` → `H5AD`
 
 **Secondary Analysis (all paths)**
 `data_loading` → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
