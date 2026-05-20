@@ -3,7 +3,7 @@ Merge 2 or more h5ad files into a single spatially-unified h5ad file using the h
 </goal>
 
 <when_to_use>
-Two scenarios require this workflow. Determine which applies **before** collecting parameters.
+Three scenarios require this workflow. Determine which applies **before** collecting parameters.
 
 ---
 
@@ -24,6 +24,14 @@ Use when the h5ad files represent separate biological conditions or samples that
 - After all per-sample secondary analyses are complete, optionally run `h5ad_merger_wf` to stitch the analyzed h5ad files together for **unified spatial visualization**.
 - Do **not** merge first — the secondary analysis pipeline does not perform batch correction, so merging distinct samples before analysis would conflate technical variation between samples with biological signal.
 - The merged output will contain all per-sample `.obs` columns (clusters, cell types, UMAP embeddings) and a unified `X_offset` spatial coordinate array suitable for visualization.
+
+**Scenario C — Different sample types, visualization only**
+
+Use when the h5ad files come from fundamentally different sample types (e.g., different tissue types, species, or assay chemistries) and the sole goal is a side-by-side spatial visualization of the merged output — **not** secondary analysis.
+
+- Run `h5ad_merger_wf` directly to produce the merged visualization file.
+- **⚠ Warning — do not run secondary analysis on this output.** Because the files originate from different sample types, any downstream secondary analysis (normalization, HVG selection, PCA, UMAP, Leiden clustering) will produce biologically meaningless results: gene-expression distributions are not comparable across sample types, and clustering will reflect sample-type identity rather than true biological variation. The merged file is valid for spatial visualization only.
+- Before proceeding, explicitly confirm with the user that they understand secondary analysis on this merged output is not valid and that they intend to use it for visualization only.
 </when_to_use>
 
 <parameters>
@@ -56,13 +64,18 @@ A single merged h5ad file written to `output_directory/output_h5ad` containing:
 </outputs>
 
 <instructions>
-Confirm which scenario applies (A or B) before collecting parameters.
+Confirm which scenario applies (A, B, or C) before collecting parameters.
 
 For Scenario A (tile stitching), collect all parameters and confirm with the user before executing:
 > "All parameters are set. Let me know when you're ready to run the H5AD Merger."
 Only generate and execute the code cell below once the user confirms.
 
 For Scenario B (distinct samples), run secondary analysis on each h5ad independently first. Return here after all per-sample analyses are complete if the user wants a merged spatial visualization.
+
+For Scenario C (different sample types, visualization only), before collecting parameters deliver the following warning to the user and require explicit acknowledgment:
+> "⚠️ **Warning:** You are merging h5ad files from different sample types. The merged output is valid for spatial visualization only. Running secondary analysis (normalization, HVG selection, PCA, UMAP, clustering) on this merged file is scientifically incorrect and will produce flawed, uninterpretable results — gene-expression distributions are not comparable across different sample types. Do you confirm you want to proceed for visualization purposes only, and will not use this merged file for secondary analysis?"
+
+Only collect parameters and execute the merger after the user explicitly confirms they understand and accept this limitation.
 </instructions>
 
 <example>
