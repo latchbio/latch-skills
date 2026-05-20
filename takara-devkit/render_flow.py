@@ -11,7 +11,7 @@ import matplotlib.patheffects as pe
 import numpy as np
 
 # ── Canvas ─────────────────────────────────────────────────────────────────
-FIG_W, FIG_H = 26, 38
+FIG_W, FIG_H = 30, 38
 fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
 ax.set_xlim(0, FIG_W)
 ax.set_ylim(0, FIG_H)
@@ -160,13 +160,43 @@ arrow(ax, 7.5, PAQ_Y, 7.5, KIT_Y + 0.7, color=C["arrow"])
 ax.text(9.2, PAQ_Y + 0.15, "Raw FastQ files", color=C["arrow_yes"],
         fontsize=8.5, ha="center", va="bottom")
 
-# "H5AD" right arm going straight down to secondary entry
-H5AD_DIRECT_Y = 19.5  # secondary entry y
-arrow(ax, 13 + 2.6, PAQ_Y, 20.5, PAQ_Y, color=C["arrow"])
-arrow(ax, 20.5, PAQ_Y, 20.5, H5AD_DIRECT_Y, color=C["arrow"],
-      connectionstyle="arc3,rad=0.0")
-ax.text(20.8, PAQ_Y - 0.3, "Already have\nH5AD file", color=C["arrow_no"],
+# "H5AD" right arm → Multiple H5AD decision → secondary entry
+H5AD_DIRECT_Y = 19.5   # secondary entry y
+H5AD_RIGHT_X  = 21.5   # x anchor for the H5AD branch
+H5AD_MERGE_X  = 26.5   # x for the h5ad_merger_wf box (same-sample path)
+
+# Arrow from PAQ right to branch point
+arrow(ax, 13 + 2.6, PAQ_Y, H5AD_RIGHT_X, PAQ_Y, color=C["arrow"])
+ax.text(H5AD_RIGHT_X + 0.2, PAQ_Y - 0.3, "Already have\nH5AD file(s)", color=C["arrow_no"],
         fontsize=8, ha="left", va="top")
+
+# "Multiple H5AD files?" decision diamond
+MULTI_Y = 32.5
+arrow(ax, H5AD_RIGHT_X, PAQ_Y - 0.0, H5AD_RIGHT_X, MULTI_Y + 0.68, color=C["arrow"])
+diamond(ax, H5AD_RIGHT_X, MULTI_Y, 5.0, 1.35, "Multiple H5AD\nfiles?")
+
+# ── "No / distinct samples" path: straight down to SEC_ENTRY ────────────────
+arrow(ax, H5AD_RIGHT_X, MULTI_Y - 0.68, H5AD_RIGHT_X, H5AD_DIRECT_Y,
+      color=C["arrow_no"], label="No — single file\nor distinct samples")
+
+# ── "Yes — same sample (tile stitching)" path: right → merger box → down ────
+arrow(ax, H5AD_RIGHT_X + 2.5, MULTI_Y, H5AD_MERGE_X, MULTI_Y,
+      color=C["wf_bd"])
+ax.text(H5AD_RIGHT_X + 2.6, MULTI_Y + 0.12,
+        "Yes — same sample\n(tile stitching)",
+        color=C["wf_bd"], fontsize=7.5, ha="left", va="bottom")
+arrow(ax, H5AD_MERGE_X, MULTI_Y - 0.68, H5AD_MERGE_X, 30.65, color=C["wf_bd"])
+
+H5AD_MERGE_BOX_Y = 30.2
+box(ax, H5AD_MERGE_X, H5AD_MERGE_BOX_Y, 5.0, 0.65,
+    "h5ad_merger_wf", "Merge spatial tiles → H5AD",
+    fc=C["wf"], ec=C["wf_bd"])
+
+# From merger box down to H5AD_DIRECT_Y, then left to join main path
+arrow(ax, H5AD_MERGE_X, H5AD_MERGE_BOX_Y - 0.32, H5AD_MERGE_X, H5AD_DIRECT_Y,
+      color=C["arrow"])
+arrow(ax, H5AD_MERGE_X, H5AD_DIRECT_Y, H5AD_RIGHT_X, H5AD_DIRECT_Y,
+      color=C["arrow"])
 
 # Kit type diamond
 diamond(ax, 7.5, KIT_Y, 4.2, 1.3, "Kit type?")
@@ -379,8 +409,8 @@ arrow(ax, TK_X, TK_VIEW_Y - 0.31, TK_X, SEC_ENTRY_Y,
       connectionstyle="arc3,rad=0.0")
 arrow(ax, TK_X, SEC_ENTRY_Y, SEC_X + 1.6, SEC_ENTRY_Y)
 
-# Arrow from H5AD direct (right side)
-arrow(ax, 20.5, H5AD_DIRECT_Y, SEC_X + 3.2, SEC_ENTRY_Y,
+# Arrow from H5AD branch (right side) into secondary analysis entry
+arrow(ax, H5AD_RIGHT_X, H5AD_DIRECT_Y, SEC_X + 3.2, SEC_ENTRY_Y,
       connectionstyle="arc3,rad=0.0")
 
 box(ax, SEC_X, SEC_ENTRY_Y, 5.5, 0.68,
@@ -511,7 +541,7 @@ for i, (fc, ec, label) in enumerate(items):
             fontsize=8.8, va="center")
 
 # ── Save ─────────────────────────────────────────────────────────────────────
-OUT = "/Users/kutchmaa/Documents/Code/takara-devkit-2/latch-skills/takara-devkit/process_flow.png"
+OUT = "/Users/kutchmaa/Documents/Code/takara-devkit/latch-skills/takara-devkit/process_flow.png"
 plt.savefig(OUT, dpi=180, bbox_inches="tight",
             facecolor=fig.get_facecolor())
 print(f"Saved → {OUT}")

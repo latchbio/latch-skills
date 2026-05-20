@@ -14,7 +14,11 @@ flowchart TD
 
     %% ── PRIMARY ANALYSIS ──────────────────────────────────────────────────
     PAQ -->|Raw FastQ files| KIT{Kit type?}:::decision
-    PAQ -->|Already have H5AD| SEC_ENTRY
+    PAQ -->|Already have H5AD| MULTI_H5AD{Multiple H5AD\nfiles?}:::decision
+    MULTI_H5AD -->|No — single file| SEC_ENTRY
+    MULTI_H5AD -->|Yes — same sample\ntile stitching| H5AD_MERGE[h5ad_merger_wf\nMerge spatial tiles → H5AD]:::wf
+    MULTI_H5AD -->|Yes — distinct samples\nanalyze each independently| SEC_ENTRY
+    H5AD_MERGE --> SEC_ENTRY
 
     %% Seeker branch
     KIT -->|Seeker| SK_GENOME[Collect reference\ngenome + params]:::wf
@@ -106,3 +110,9 @@ flowchart TD
 
 **Secondary Analysis (all paths)**
 `data_loading` → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
+
+**H5AD Merging — Scenario A (same biological sample / tile stitching)**
+`H5AD(s)` → `h5ad_merger_wf` → merged H5AD → secondary analysis
+
+**H5AD Merging — Scenario B (distinct biological conditions)**
+Each H5AD → secondary analysis independently → *(optional)* `h5ad_merger_wf` for unified spatial visualization
