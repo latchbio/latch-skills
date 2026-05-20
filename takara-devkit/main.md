@@ -7,10 +7,14 @@ There are exactly three valid starting points:
    - If Trekker → follow `wf/trekker_pipeline_wf.md`
    - Then proceed with the Primary Analysis plan.
 
-2. **Secondary Analysis** — starting with a single H5AD file (either produced by a completed Seeker/Trekker pipeline run or provided directly).
+2. **Secondary Analysis, Visualization, or Image Overlay** — starting with a single H5AD file (either produced by a completed Seeker/Trekker pipeline run or provided directly).
    - A successful primary analysis pipeline run always produces an H5AD; if no H5AD is present the primary analysis pipeline did not complete successfully and the user must re-run it (starting point 1).
    - What tissue and disease conditions describe your data?
-   - Proceed with the Secondary Analysis plan.
+   - Triggers: "analyze my h5ad", "secondary analysis", "visualize my h5ad", "explore my h5ad", "H&E", "overlay".
+   - Always run Data Loading (step 1) first. After loading, **always** ask the user: "Would you like to continue with full secondary analysis?"
+   - If yes → proceed with the full Secondary Analysis plan (steps 2–9).
+   - If no → follow the Visualization Only plan. Even so, offer secondary analysis again at the end.
+   - Image overlay is a built-in feature of the data viewer — loading the data is sufficient for this use case.
 
 3. **Multiple H5AD files** — the user has 2 or more H5AD files they wish to combine.
    - Ask: are the files from **adjacent spatial tiles of the same biological sample** (e.g., two Seeker slides from the same tissue), or from **distinct biological conditions** (e.g., experimental vs control)?
@@ -37,6 +41,11 @@ There are exactly three valid starting points:
 7. Clustering -> `steps/clustering.md`
 8. Differential Gene Expression -> `steps/diff_gene_expression.md`
 9. Cell Type Annotation -> `steps/cell_typing.md`
+</plan>
+
+<plan id="visualization_only" label="Visualization Only">
+1. Data Loading -> `steps/data_loading.md`
+2. Ask the user if they would like to proceed with full secondary analysis. If yes, continue with the Secondary Analysis plan starting at step 2.
 </plan>
 
 <self_eval_criteria>

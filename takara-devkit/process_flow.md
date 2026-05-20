@@ -62,7 +62,10 @@ flowchart TD
     SEC_ENTRY[/Secondary Analysis\nEntry Point/]
     SEC_ENTRY --> DATA_LOAD[data_loading\nLoad H5AD into notebook]:::step
 
-    DATA_LOAD --> SK_Q{Seeker data?}:::decision
+    DATA_LOAD --> VIZ_Q{Continue with\nsecondary analysis?}:::decision
+    VIZ_Q -->|Yes| SK_Q
+    VIZ_Q -->|No — stop here| DONE_VIZ([Analysis Complete]):::terminal
+    SK_Q{Seeker data?}:::decision
     SK_Q -->|Yes| BG_REM[background_removal\nRemove spatial background\nKitType 10×10 or 3×3]:::seeker
     SK_Q -->|No — skip| QC
     BG_REM --> QC
@@ -109,7 +112,10 @@ flowchart TD
 `FastQ` → `{fxflex|upip|qp}_demux/preprocess` → `fastq_concatenator?` → `trekker_pipeline ×N` *(all launched in parallel, awaited together)* → `trekker_merger?` → `H5AD`
 
 **Secondary Analysis (all paths)**
-`data_loading` → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
+`data_loading` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
+
+**Visualization Only / Image Overlay**
+`data_loading` → ask about secondary analysis → Analysis Complete (image overlay is a built-in viewer feature)
 
 **H5AD Merging — Scenario A (same biological sample / tile stitching)**
 `H5AD(s)` → `h5ad_merger_wf` → merged H5AD → secondary analysis

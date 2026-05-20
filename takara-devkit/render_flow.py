@@ -431,9 +431,19 @@ sa_step(LOAD_Y, "data_loading", "Load H5AD into notebook",
         C["step"], C["step_bd"])
 arrow(ax, SA_X, SEC_ENTRY_Y - 0.34, SA_X, LOAD_Y + SA_H/2)
 
-SK_Q_Y = LOAD_Y - 1.15
+VIZ_Q_Y = LOAD_Y - 1.15
+diamond(ax, SA_X, VIZ_Q_Y, 4.8, 1.15, "Continue with\nsecondary analysis?")
+arrow(ax, SA_X, LOAD_Y - SA_H/2, SA_X, VIZ_Q_Y + 0.575)
+
+VIZ_DONE_X = SA_X + 5.5
+stadium(ax, VIZ_DONE_X, VIZ_Q_Y, 3.2, 0.62, "Analysis Complete")
+arrow(ax, SA_X + 2.4, VIZ_Q_Y, VIZ_DONE_X - 1.6, VIZ_Q_Y,
+      label="No", color=C["arrow_no"])
+
+SK_Q_Y = VIZ_Q_Y - 1.3
 diamond(ax, SA_X, SK_Q_Y, 4.4, 1.1, "Seeker data?")
-arrow(ax, SA_X, LOAD_Y - SA_H/2, SA_X, SK_Q_Y + 0.55)
+arrow(ax, SA_X, VIZ_Q_Y - 0.575, SA_X, SK_Q_Y + 0.55,
+      label="Yes", color=C["arrow_yes"])
 
 BG_X = SA_X - 4.0
 BG_Y = SK_Q_Y
