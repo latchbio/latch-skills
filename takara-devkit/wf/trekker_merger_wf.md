@@ -26,6 +26,15 @@ The merged output is written to `output_directory/{sample_ID}/`.
 </outputs>
 
 <instructions>
+**Tile ID grouping — check before collecting parameters:**
+If the user is merging outputs from multiple Trekker pipeline executions that used different tile IDs, do NOT merge all outputs into one run. Instead:
+- Group the outputs by `tile_id`.
+- Run a separate Trekker Merger for each group, merging only the outputs that share the same tile ID.
+- Each merger run requires its own `sample_ID` (the merged name for that tile) and its own `output_directory`.
+- Inform the user of this grouping and collect parameters for each merger run before proceeding.
+
+If all outputs share the same tile ID, a single merger run covering all outputs is likely correct.
+
 After collecting all required parameters, confirm with the user before executing:
 > "All parameters are set. Let me know when you're ready to run the Trekker Merger."
 Only generate and execute the code cell below once the user confirms.
@@ -59,9 +68,9 @@ params = {
 }
 
 w = w_workflow(
-    wf_name="wf.__init__.trekker_merger",
+    wf_name="trekker_merger",
     key="trekker_merger_run_1",
-    version="0.1.2-7a97dd",
+    version="1.4.6-0eab98",
     params=params,
     automatic=True,
     label="Trekker Merger",

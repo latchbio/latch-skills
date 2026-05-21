@@ -18,8 +18,8 @@ helper-library usage.
 - the user mentions `Takara`, `Seeker`, or `Trekker`
 - paths or filenames contain `Seeker` or `Trekker`
 - metadata identifies Seeker 3x3, Seeker 10x10, or Trekker
-- the user has paired FASTQs for a Trekker run
-- the user has a Takara-derived H5AD for downstream analysis
+- the user has paired FASTQs for a Trekker or Seeker primary analysis run
+- the user has a Takara-derived H5AD for secondary exploratory analysis
 
 If the platform is still unclear, ask before executing platform-specific steps.
 
@@ -29,20 +29,11 @@ If the platform is still unclear, ask before executing platform-specific steps.
 - Is the kit type Seeker 3x3, Seeker 10x10, or Trekker?
 - Does the H5AD contain one sample or multiple samples?
 
-## Latch setup
-
-If the environment supports `redeem_package`, install the Takara package before analysis:
-
-- `package_code`: `3015c6c63ecc3f2cd410ea340a36af05777`
-- `package_version_id`: `192`
-
-If `redeem_package` is unavailable, continue with the repo-local docs and the current environment.
-
 ## Workflow overview
 
 Read `main.md` for the step plan, then load each step doc before executing it.
 
-1. Reads to Counts (FastQ only) — [workflow reference](wf/trekker_pipeline_wf.md) and [step details](steps/reads_to_counts.md)
+1. Reads to Counts (FastQ only) — [Trekker workflow](wf/trekker_pipeline_wf.md) or [Seeker workflow](wf/seeker_pipeline_wf.md) depending on kit type, and [step details](steps/reads_to_counts.md)
 2. Data Loading — [step details](steps/data_loading.md)
 3. Background Removal (Seeker only) — [step details](steps/background_removal.md)
 4. Quality Control and Filtering — [step details](steps/qc.md)
@@ -55,9 +46,9 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 
 ## Important branches
 
-- Run Reads to Counts only when the user starts from FASTQs.
+- Run Reads to Counts only when the user starts from FASTQ files.
 - Run Background Removal only for Seeker datasets.
-- If the user already has a processed H5AD, start at the first downstream step that still applies.
+- If the user already has a processed H5AD, start at the Data Loading step.
 
 ## Helper library usage
 
