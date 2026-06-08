@@ -16,6 +16,7 @@ Each skill is a directory containing a `SKILL.md` file with YAML frontmatter (`n
 | **vizgen-devkit** | Analyze Vizgen MERFISH spatial transcriptomics data — cell segmentation, preprocessing, QC, spatial analysis, and secondary analysis. |
 | **xenium-devkit** | Analyze 10x Genomics Xenium in situ data — data preparation, preprocessing, differential expression, cell type annotation, and domain detection. |
 | **atlasx-devkit** | Analyze AtlasXomics spatial epigenomics (ATAC-seq) data — QC, clustering, differential analysis, and cell type annotation. |
+| **atrandi-devkit** | Analyze Atrandi RNA:DNA co-sequencing data — cell calling, QC, filtering, normalization, clustering, cell typing, and amplicon diagnostics. |
 
 ## Getting started
 
@@ -54,6 +55,8 @@ Reference documentation here.
 ```
 latch-skills/
 ├── atlasx-devkit/
+│   └── SKILL.md, steps/, wf/
+├── atrandi-devkit/
 │   └── SKILL.md, steps/, wf/
 ├── latch-curation/
 │   ├── SKILL.md
