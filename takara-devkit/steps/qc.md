@@ -5,7 +5,7 @@ Identify and apply filtering thresholds to counts.
 <method>
 For each of "genes per bead", "mitochondrial percentage" and "total UMIs" do the following:
 
-1/ Make histograms of this metric
+1/ Make histograms of this metric. Set the x-axis range explicitly to the actual data range (min to max of the metric values computed from `adata.obs`) — do not rely on library defaults or hardcoded limits. For total UMIs use `xlim=(0, adata.obs['total_counts'].max())`.
 2/ Plot spatial coordinates of *removed beads&* for a reasonable range of metrics so the user can identify effects on morphology 
 3/ Expose a text input widget where the user can modify this value
 4/ Tell the user how many beads will be removed after applying this value
@@ -15,6 +15,8 @@ For the "total UMIs" method specifically, also generate a knee plot:
 - X-axis: bead rank (sorted by UMI count descending, so rank 1 = highest UMI count)
 - Y-axis: total UMIs
 - Both axes in log scale
+- X-axis range: explicitly set to `(1, n_beads)` where `n_beads = len(adata)` — never use a hardcoded upper limit
+- Y-axis range: explicitly set to `(adata.obs['total_counts'].min(), adata.obs['total_counts'].max())` — not a library default
 - The knee/inflection point visually indicates a natural UMI threshold separating real beads from empty droplets/background
 
 Start with "genes per bead" and go one at a time.
