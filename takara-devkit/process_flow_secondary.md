@@ -20,16 +20,24 @@ flowchart TD
     BG_REM --> QC
 
     QC[qc\nQuality Control + Cell Filtering]:::step
-    QC --> NORM[normalization\nNormalize + log-transform counts]:::step
+
+    QC --> RCTD_Q{Seeker: run RCTD?\noptional}:::decision
+    RCTD_Q -->|Yes| RCTD[rctd\nReference build → doublet-mode\ndeconvolution → labels into .obs]:::seeker
+    RCTD_Q -->|No| NORM
+    RCTD --> NORM
+    RCTD -. per-bead labels .-> CELL
+    RCTD -. per-bead labels .-> CELL2
+
+    NORM[normalization\nNormalize + log-transform counts]:::step
     NORM --> FEAT[feature_selection\nSelect highly variable genes]:::step
     FEAT --> DIMRED[dimensionality_reduction\nPCA → UMAP embedding]:::step
     DIMRED --> CLUST[clustering\nLeiden community detection]:::step
 
     CLUST --> GOAL{Analysis goal?}:::decision
     GOAL -->|Find marker genes| DGE[diff_gene_expression\nDifferential gene expression]:::step
-    GOAL -->|Annotate cell types| CELL[cell_typing\nCell type annotation]:::step
+    GOAL -->|Annotate cell types| CELL[cell_typing\nCell type annotation\n+ cross-tab RCTD labels]:::step
     GOAL -->|Both| DGE2[diff_gene_expression\nDifferential gene expression]:::step
-    DGE2 --> CELL2[cell_typing\nCell type annotation]:::step
+    DGE2 --> CELL2[cell_typing\nCell type annotation\n+ cross-tab RCTD labels]:::step
 
     DGE   --> DONE1([Analysis Complete]):::terminal
     CELL  --> DONE2([Analysis Complete]):::terminal

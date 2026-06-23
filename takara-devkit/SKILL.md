@@ -35,6 +35,7 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 
 1. Reads to Counts (FastQ only) — [Trekker workflow](wf/trekker_pipeline_wf.md) or [Seeker workflow](wf/seeker_pipeline_wf.md) depending on kit type, and [step details](steps/reads_to_counts.md)
 2. Data Loading — [step details](steps/data_loading.md)
+2b. Image Overlay (always offer after loading; e.g. H&E) — [step details](steps/image_overlay.md)
 3. Background Removal (Seeker only) — [step details](steps/background_removal.md)
 4. Quality Control and Filtering — [step details](steps/qc.md)
 5. Normalization — [step details](steps/normalization.md)
@@ -44,11 +45,15 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 9. Differential Gene Expression — [step details](steps/diff_gene_expression.md)
 10. Cell Type Annotation — [step details](steps/cell_typing.md)
 
+RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a separate reference-based track — [step details](steps/rctd.md), [RCTD workflow](wf/rctd_wf.md), [reference builder workflow](wf/rctd_reference_builder_wf.md)
+
 ## Important branches
 
 - Run Reads to Counts only when the user starts from FASTQ files.
 - Run Background Removal only for Seeker datasets.
+- Run RCTD only for Seeker datasets, optionally, after QC. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
 - If the user already has a processed H5AD, start at the Data Loading step.
+- Always ask, right after Data Loading, whether the user has an H&E or other pathology image to overlay — don't wait for them to bring it up. If yes, the image is almost always a separate file from the H5AD; load it and use the viewer's alignment tool to register it. Loading the H5AD alone does not align an image. Open the H5AD viewer with `sync_to` set to its `LPath` (see `steps/data_loading.md`) so the alignment persists back to the file automatically.
 
 ## Helper library usage
 

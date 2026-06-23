@@ -11,10 +11,10 @@ There are exactly three valid starting points:
    - A successful primary analysis pipeline run always produces an H5AD; if no H5AD is present the primary analysis pipeline did not complete successfully and the user must re-run it (starting point 1).
    - What tissue and disease conditions describe your data?
    - Triggers: "analyze my h5ad", "secondary analysis", "visualize my h5ad", "explore my h5ad", "H&E", "overlay".
-   - Always run Data Loading (step 1) first. After loading, **always** ask the user: "Would you like to continue with full secondary analysis?"
+   - Always run Data Loading (step 1) first, opening the viewer with `sync_to` set to the H5AD's `LPath` per `steps/data_loading.md`. After loading, **always** ask the user whether they have an H&E or other pathology image they'd like to overlay (→ `steps/image_overlay.md` if yes), then **always** ask: "Would you like to continue with full secondary analysis?"
    - If yes → proceed with the full Secondary Analysis plan (steps 2–9).
    - If no → follow the Visualization Only plan. Even so, offer secondary analysis again at the end.
-   - Image overlay is a built-in feature of the data viewer — loading the data is sufficient for this use case.
+   - The image overlay offer is not conditional on the user mentioning "H&E"/"overlay" themselves — ask proactively every time spatial data is loaded, since the image is almost always a separate file from the H5AD and needs to be loaded and registered with the viewer's alignment tool. This is not automatic from loading the H5AD alone.
 
 3. **Multiple H5AD files** — the user has 2 or more H5AD files they wish to combine.
    - Ask: are the files from **adjacent spatial tiles of the same biological sample** (e.g., two Seeker slides from the same tissue), or from **distinct biological conditions** (e.g., experimental vs control)?
@@ -33,18 +33,23 @@ There are exactly three valid starting points:
 
 <plan id="secondary_analysis" label="Secondary Analysis">
 1. Data Loading -> `steps/data_loading.md`
+1b. Image Overlay (*always offer, optional*) -> `steps/image_overlay.md`
 2. Background Removal (*Seeker ONLY*) -> `steps/background_removal.md`
 3. Quality Control + Filtering -> `steps/qc.md`
+3b. RCTD Cell Type Deconvolution (*Seeker ONLY, optional*) -> `steps/rctd.md`
 4. Normalization -> `steps/normalization.md`
 5. Feature Selection -> `steps/feature_selection.md`
 6. Dimensionality Reduction -> `steps/dimensionality_reduction.md`
 7. Clustering -> `steps/clustering.md`
 8. Differential Gene Expression -> `steps/diff_gene_expression.md`
 9. Cell Type Annotation -> `steps/cell_typing.md`
+
+Step 3b (RCTD) is an **optional, Seeker-only** reference-based track that runs on the QC-filtered raw counts. It is **separate from** the steps 4–9 track (normalization → clustering → DEG → annotation), which run unchanged whether or not RCTD is used. Offer it after QC; if the user declines, skip straight to step 4. When RCTD is run, its per-bead labels are written into `adata.obs` and consumed at step 9 to label and validate Leiden clusters — complementing, not replacing, marker-based annotation.
 </plan>
 
 <plan id="visualization_only" label="Visualization Only">
 1. Data Loading -> `steps/data_loading.md`
+1b. Image Overlay (*optional*) -> `steps/image_overlay.md`
 2. Ask the user if they would like to proceed with full secondary analysis. If yes, continue with the Secondary Analysis plan starting at step 2.
 </plan>
 
