@@ -12,14 +12,14 @@ Why a dedicated workflow rather than converting inline: the RCTD reference must 
 Provide **exactly one** reference source (`reference_file` or `reference_url`):
 - **`run_name`** (`str`, **required**) — Names the run and output subdirectory. No spaces.
 - **`reference_file`** (`LatchFile`, optional) — A reference attached from LData: an AnnData (`.h5ad`) or an R object (`.rds` — a spacexr `Reference` or a Seurat object). Use this for user-attached references.
-- **`reference_url`** (`str`, optional) — A direct download URL to a `.h5ad` or `.rds`. The workflow downloads it in compute (robust for large atlases). Use this for references you found on the web (CELLxGENE/TOME/MOCA/etc.) or a URL the user pasted. The URL **path** must end in `.h5ad`/`.h5`/`.rds` (a trailing `?signed-query-string` is fine); if a source only offers an extension-less link (e.g. some figshare `ndownloader` links), have the user download and attach it via `reference_file` instead.
+- **`reference_url`** (`str`, optional) — A direct download URL to a `.h5ad` or `.rds`. The workflow downloads it in compute (robust for large atlases). Use this for references you found on the web (CELLxGENE/TOME/MOCA/etc.) or a URL the user pasted. The URL **path** must end in `.h5ad`/`.h5`/`.rds` (a trailing `?signed-query-string` is fine); if a source only offers an extension-less link (e.g. some figshare `ndownloader` links), have the user download it and attach it using the attach button in the Agent interface (or provide its Latch Data path) via `reference_file` instead.
 - **`cell_type_column`** (`str`, default `"cell_type"`) — The cell-type column: an `.obs` column for `.h5ad`, or a `meta.data` column for a Seurat `.rds`. CELLxGENE uses `cell_type`. If it isn't found, the builder logs the available columns so you can correct it and relaunch.
 - **`max_cells_per_type`** (`int`, default `1000`) — Per-cell-type downsample cap (controls RCTD memory). Each type is randomly downsampled to at most this many cells.
 - **`min_cells_per_type`** (`int`, default `25`) — Cell types with fewer cells than this are dropped (RCTD needs a minimum per type).
 - **`output_directory`** (`LatchOutputDir`, **required**) — Latch directory for outputs. The reference lands in `output_directory/<run_name>/`.
 
 Notes:
-- The file type is detected by extension: `.h5ad`/`.h5` → AnnData path (standardized in Python, then built in R); `.rds` → read directly in R (a spacexr `Reference` is re-validated; a Seurat object has its counts + `cell_type_column` extracted). A Seurat **v5** `.rds` cannot be read by SeuratObject 4.1.4 — if that fails, ask the user for a `.h5ad` instead.
+- The file type is detected by extension: `.h5ad`/`.h5` → AnnData path (standardized in Python, then built in R); `.rds` → read directly in R (a spacexr `Reference` is re-validated; a Seurat object has its counts + `cell_type_column` extracted). A Seurat **v5** `.rds` cannot be read by SeuratObject 4.1.4 — if that fails, ask the user to attach a `.h5ad` instead using the attach button in the Agent interface, or provide its Latch Data path.
 - For `.h5ad`, the builder auto-picks the rawest counts (`.layers['counts']` → `.raw.X` → `.X`) and a gene-symbol var column when present.
 </parameters>
 

@@ -68,6 +68,13 @@ from takara.background_removal import KitType, remove_background
 
 Resolve `<skill-root>` to the directory where this skill is checked out in the current environment.
 
+## Requesting files from the user
+
+Whenever a step needs a file the agent does not already have (e.g. a tissue
+image, a reference, an h5ad data file), first ask the user to provide it using the **attach button in 
+the Agent text interface**. If that fails, then other options include asking the user to give a Latch 
+Data path directly or providing a picker widget to help the user select the needed file.
+
 ## Latch-specific execution
 
 If `latch-workflows`, `latch-plots-ui`, or `latch-data-access` are available, prefer them for:
