@@ -71,9 +71,10 @@ Resolve `<skill-root>` to the directory where this skill is checked out in the c
 ## Requesting files from the user
 
 Whenever a step needs a file the agent does not already have (e.g. a tissue
-image, a reference, an h5ad data file), first ask the user to provide it using the **attach button in 
-the Agent text interface**. If that fails, then other options include asking the user to give a Latch 
-Data path directly or providing a picker widget to help the user select the needed file.
+image, a reference, an h5ad data file), ask the user to provide it using the **attach button in
+the Agent text interface**. Do not build a custom file picker widget — that does not work in this
+environment. If the user can't attach (e.g. the file isn't in their local environment), fall back to
+asking them for its Latch Data path directly.
 
 ## Latch-specific execution
 

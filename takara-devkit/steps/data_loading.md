@@ -3,6 +3,12 @@ Load raw data into memory, display to user and check dimensions.
 </goal>
 
 <method>
+### Step 1a — Get the H5AD file
+
+If you do not already have the source H5AD's `LPath` (e.g. this is a fresh Secondary Analysis / Visualization entry rather than a direct continuation from a just-completed primary pipeline run), **ask the user to attach it using the attach button in the Agent text interface** — do not build a file picker widget yourself, that capability doesn't work in this environment. If attaching fails, fall back to asking the user for its Latch Data path directly.
+
+### Step 1b — Load and view
+
 Use `w_h5` to show the user the spatial coordinates. Open it with `sync_to` pointed at the source H5AD's `LPath` so that any edits made in the viewer during this session (including a later image alignment, see `steps/image_overlay.md`) are persisted back to the file rather than lost when the session ends:
 
 ```python
