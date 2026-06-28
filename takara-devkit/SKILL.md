@@ -74,7 +74,9 @@ Whenever a step needs a file the agent does not already have (e.g. a tissue
 image, a reference, an h5ad data file), ask the user to provide it using the **attach button in
 the Agent text interface**. Do not build a custom file picker widget — that does not work in this
 environment. If the user can't attach (e.g. the file isn't in their local environment), fall back to
-asking them for its Latch Data path directly.
+asking them for its Latch Data path directly. An exception to this rule is the entry of parameters
+for the seeker_pipeline_wf and trekker_pipeline_wf - for these pipelines build the parameter
+entry widgets for the customer.
 
 ## Latch-specific execution
 
