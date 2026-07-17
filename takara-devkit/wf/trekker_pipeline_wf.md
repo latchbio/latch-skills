@@ -7,8 +7,8 @@ Before collecting any pipeline parameters, ask the user the following questions 
 
 1. **Which single-cell platform was used?**
    Present the full `sc_platform` table from the parameters section below and ask the user to identify their platform.
-   - If the selected platform is **TrekkerFX_FLEX**, **TrekkerU_PIP**, or **TrekkerQ_P**: run the corresponding preprocessing workflow first (see the platform-specific notes in the parameters section), then return here to continue with questions 2 and 3.
-   - All other platforms: proceed directly to question 2 and 3.
+   - If the selected platform is **TrekkerFX_FLEX** or **TrekkerQ_P**: run the corresponding preprocessing (partitioning) workflow first (see the platform-specific notes in the parameters section), then return here to continue with questions 2 and 3.
+   - All other platforms (including **TrekkerU_PIP**, whose PIPSeeker conversion is now built into the Trekker pipeline): proceed directly to question 2 and 3.
 
 2. **Multiple reactions?**
    > "Was the experiment for this Trekker tile split into multiple single-nuclei reactions (i.e. processed with different sample indices during sequencing)?"
@@ -35,15 +35,16 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
 - **Tile ID** → `tile_id`
 - **Single-cell platform** → `sc_platform`
   - This should already be known from the pre-pipeline questions. Map the user's platform to the correct string below.
-  - Three platforms require a preprocessing workflow before Trekker can run — these are called out first:
+  - Two platforms require a partitioning (preprocessing) workflow before Trekker can run — these are called out first:
 
     **Platforms requiring preprocessing (must be run before Trekker):**
 
     | String value | Platform | Preprocessing workflow |
     |---|---|---|
-    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex v1 | `wf/trekker_fxflex_demux_wf.md` |
-    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) | `wf/trekker_upip_preprocess_wf.md` |
+    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex (v1 and v2 APEX) | `wf/trekker_fxflex_demux_wf.md` |
     | `"TrekkerQ_P"` | Parse Evercode WT v3 | `wf/trekker_qp_demux_wf.md` |
+
+    > **Note:** As of Trekker v1.4.11, `TrekkerU_PIP` (PIPSeeker) no longer needs a separate preprocessing workflow — the PIPSeeker-to-Trekker conversion is performed inside the Trekker pipeline. Select `TrekkerU_PIP` and provide the standard inputs directly.
 
     **All platforms:**
 
@@ -54,7 +55,7 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
     | `"TrekkerU_C"` | 10x Chromium Next GEM 3'v3.1 |
     | `"TrekkerU_CX"` | 10x Chromium GEM-X 3'v4 |
     | `"Trekker5C_CX"` | 10x Chromium, 5' |
-    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex v1 ⚠️ |
+    | `"TrekkerFX_FLEX"` | 10x Chromium GEM-X Flex, v1 and v2 APEX ⚠️ |
     | `"TrekkerU_M"` | 10x Chromium Multiome ATAC + Gene Expression |
 
     *BD Rhapsody*
@@ -70,7 +71,7 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
     | String value | Platform |
     |---|---|
     | `"TrekkerU_IL"` | Illumina Single Cell 3' RNA Prep (DRAGEN) |
-    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) ⚠️ |
+    | `"TrekkerU_PIP"` | Illumina Single Cell 3' RNA Prep (PIPSeeker) |
 
     *Parse*
 
@@ -84,15 +85,12 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
 **Platforms requiring preprocessing — run the relevant workflow first, then use its outputs as Trekker inputs:**
 
 - **`TrekkerFX_FLEX`** → follow `wf/trekker_fxflex_demux_wf.md` before running Trekker.
-  - The preprocessing workflow demultiplexes the pooled FASTQs into per-sample pairs.
+  - The preprocessing workflow demultiplexes the pooled FASTQs into per-sample pairs. It supports both FLEX v1 and FLEX v2 (APEX) chemistries — **ask the user which FLEX version they used**. Sample labeling is optional: the user may enter sample names and barcodes manually, supply a manifest file, or skip labeling (outputs are then named by barcode ID). See that workflow's doc.
   - Use each output `_R1.fastq.gz` as `fastq_cb` and `_R2.fastq.gz` as `fastq_tags` for Trekker.
+  - The Trekker pipeline auto-detects the FLEX barcode version, so v1 and v2 demultiplexed outputs are launched the same way here.
   - Run a separate Trekker execution for each demultiplexed sample.
 
-- **`TrekkerU_PIP`** → follow `wf/trekker_upip_preprocess_wf.md` before running Trekker.
-  - The preprocessing workflow converts the R1 FASTQ and scRNA-seq files into Trekker-compatible versions.
-  - Use the output `<prefix>_converted_R1.fastq.gz` as `fastq_cb` for Trekker.
-  - Use the **original** R2 `.fastq.gz` (unchanged) as `fastq_tags` for Trekker.
-  - Use the output `converted_sc/` directory as `sc_outdir` for Trekker — **not** the original sc directory.
+- **`TrekkerU_PIP`** → **no preprocessing workflow required.** As of Trekker v1.4.11 the PIPSeeker-to-Trekker conversion runs inside the pipeline. Select `TrekkerU_PIP` as `sc_platform` and provide the standard inputs directly: the R1 FASTQ as `fastq_cb`, the R2 FASTQ as `fastq_tags`, and the PIPseeker single-cell output directory (`barcodes.tsv.gz`, `features.tsv.gz`, `matrix.mtx.gz`) as `sc_outdir`.
 
 - **`TrekkerQ_P`** → follow `wf/trekker_qp_demux_wf.md` before running Trekker.
   - The preprocessing workflow demultiplexes the pooled FASTQs into per-group pairs.
@@ -148,7 +146,7 @@ params = {
 w = w_workflow(
     wf_name="wf.__init__.trekker_pipeline_wf",
     key="trekker_workflow_run_1",
-    version="1.4.6-175026",
+    version="1.4.11-c5da3a",
     params=params,
     automatic=True,
     label="Trekker workflow",
@@ -197,7 +195,7 @@ for i, params in enumerate(all_params, start=1):
     w = w_workflow(
         wf_name="wf.__init__.trekker_pipeline_wf",
         key=f"trekker_workflow_run_{i}",
-        version="1.4.6-175026",
+        version="1.4.11-c5da3a",
         params=params,
         automatic=True,
         label=f"Trekker workflow — reaction {i}",

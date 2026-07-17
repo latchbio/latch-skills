@@ -33,13 +33,11 @@ flowchart TD
     %% Trekker branch
     KIT -->|Trekker| TK_PLATFORM{Single-cell\nplatform?}:::decision
 
-    TK_PLATFORM -->|TrekkerFX / FLEX| FXFLEX[trekker_fxflex_demux_wf\nBarcode demultiplex\n16-slot]:::preprocess
-    TK_PLATFORM -->|TrekkerU / PIP| UPIP[trekker_upip_preprocess_wf\nPIPseq format\nconversion]:::preprocess
+    TK_PLATFORM -->|TrekkerFX / FLEX| FXFLEX[trekker_fxflex_demux_wf\nBarcode demultiplex\nFLEX v1 or v2 APEX]:::preprocess
     TK_PLATFORM -->|TrekkerQ / P| QP[trekker_qp_demux_wf\nParse Evercode\ndemultiplex]:::preprocess
-    TK_PLATFORM -->|All other platforms| TK_RXNS
+    TK_PLATFORM -->|"All other platforms\n(incl. TrekkerU / PIP)"| TK_RXNS
 
     FXFLEX --> TK_RXNS
-    UPIP   --> TK_RXNS
     QP     --> TK_RXNS
 
     TK_RXNS{Multiple\nreactions?}:::decision
@@ -113,8 +111,10 @@ flowchart TD
 **Primary Analysis — Trekker (standard platforms)**
 `FastQ` → *(optional)* `fastq_concatenator` → `trekker_pipeline` *(parallel if multiple reactions)* → *(optional)* `trekker_merger` → `H5AD`
 
-**Primary Analysis — Trekker (platforms requiring preprocessing)**
-`FastQ` → `{fxflex|upip|qp}_demux/preprocess` → `fastq_concatenator?` → `trekker_pipeline ×N` *(all launched in parallel, awaited together)* → `trekker_merger?` → `H5AD`
+**Primary Analysis — Trekker (platforms requiring preprocessing: TrekkerFX_FLEX, TrekkerQ_P)**
+`FastQ` → `{fxflex|qp}_demux` → `fastq_concatenator?` → `trekker_pipeline ×N` *(all launched in parallel, awaited together)* → `trekker_merger?` → `H5AD`
+
+*(TrekkerU_PIP no longer needs a preprocessing step as of Trekker v1.4.11 — PIPSeeker conversion is built into `trekker_pipeline`, so it follows the standard-platform path above.)*
 
 **Secondary Analysis (all paths)**
 `data_loading` (viewer opened with `sync_to`) → *always ask: have an H&E/pathology image to overlay?* → *(optional)* `image_overlay` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
