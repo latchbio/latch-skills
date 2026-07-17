@@ -28,12 +28,10 @@ flowchart TD
     SK_VIEW --> SEC_ENTRY
 
     KIT -->|Trekker| TK_PLATFORM{Single-cell\nplatform?}:::decision
-    TK_PLATFORM -->|TrekkerFX / FLEX| FXFLEX[trekker_fxflex_demux_wf\nBarcode demultiplex]:::preprocess
-    TK_PLATFORM -->|TrekkerU / PIP| UPIP[trekker_upip_preprocess_wf\nPIPseq format conversion]:::preprocess
+    TK_PLATFORM -->|TrekkerFX / FLEX| FXFLEX[trekker_fxflex_demux_wf\nBarcode demultiplex\nFLEX v1 or v2 APEX]:::preprocess
     TK_PLATFORM -->|TrekkerQ / P| QP[trekker_qp_demux_wf\nParse Evercode demultiplex]:::preprocess
-    TK_PLATFORM -->|All other platforms| TK_RXNS
+    TK_PLATFORM -->|"All other platforms\n(incl. TrekkerU / PIP)"| TK_RXNS
     FXFLEX --> TK_RXNS
-    UPIP   --> TK_RXNS
     QP     --> TK_RXNS
 
     TK_RXNS{Multiple\nreactions?}:::decision
