@@ -90,6 +90,9 @@ Rules for the launch cell:
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
   the cell before `w_workflow` is reached, which removes the button.
+- Include the `w_text_output(...)` long-running notice inside `if execution is not None:`, before
+  the `await`. The click lands after your turn ends, so a chat message you would "display after
+  launching" never happens — the cell has to render it. See `<long_running_guidance>`.
 
 After both cells render, tell the user:
 > "Fill in the parameters above, then click **Launch Seeker workflow** to start the pipeline."
@@ -166,6 +169,7 @@ attach, set the picker's `default` to the attached `latch://` path so the cell s
 ```python
 from dataclasses import dataclass
 from lplots.widgets.workflow import w_workflow
+from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
 
 @dataclass
@@ -235,6 +239,23 @@ w = w_workflow(
 execution = w.value
 
 if execution is not None:
+    # The long-running notice MUST be rendered here, by the cell itself. The click happens
+    # after the agent's turn has ended, so the agent is not running and cannot post it to
+    # chat. This widget renders before the await, so it appears immediately on click.
+    w_text_output(
+        content=(
+            "The Seeker pipeline is now running on Latch compute and will take some time to "
+            "finish. It runs independently of this notebook, so it is safe to close this tab "
+            "— and you may also **shut down the notebook pod while the workflow runs, which "
+            "stops the notebook compute charges and saves cost**. Shutting the pod down will "
+            "not interrupt the workflow. You may monitor the progress of the workflow in the "
+            "workflows executions tab. When the workflow has completed, restart the pod, "
+            "reopen the notebook, and the agent will resume from where you left off."
+        ),
+        appearance={"message_box": "info"},
+        key="seeker_long_running_notice",
+    )
+
     res = await execution.wait()
 
     if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
@@ -249,8 +270,19 @@ passed in `params`.
 </example>
 
 <long_running_guidance>
-Once the user clicks the launch button and the execution starts, display this message to the user
-**in full** — do not shorten it or drop the pod shutdown advice:
+Because `automatic=False`, the user clicks **Launch** after your turn has ended. You are not
+running at that moment and cannot post anything to chat, so this message has to be delivered in
+**two** places — do both, and never shorten it or drop the pod shutdown advice:
+
+1. **In the launch cell**, as the `w_text_output(...)` inside `if execution is not None:` shown in
+   the example above. This is what the user actually sees on click, and it is the only delivery
+   that survives the agent's turn ending. It must come *before* `await execution.wait()` —
+   anything after the await does not render until the whole pipeline finishes.
+2. **In chat, when you present the two cells**, phrased for what is about to happen: tell the user
+   that once they click Launch the pipeline runs on Latch compute, and that they may then shut the
+   notebook pod down to save cost.
+
+The message text:
 
 "The Seeker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
 </long_running_guidance>

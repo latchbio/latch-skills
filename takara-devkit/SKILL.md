@@ -105,9 +105,20 @@ start the pipeline.
 ## Long-running workflows
 
 Every workflow in `wf/` runs on **Latch compute**, separately from this notebook pod. As soon as
-an execution starts, display the `<long_running_guidance>` message from that workflow's doc —
-verbatim and in full. This is not optional and is not superseded by anything else you are doing;
-if the doc has no such block, say the same thing in your own words.
+an execution starts, the user must get the `<long_running_guidance>` message from that workflow's
+doc — verbatim and in full. This is not optional; if the doc has no such block, say the same thing
+in your own words.
+
+**Where the message goes depends on how the workflow is launched:**
+
+- `automatic=True` (the workflow fires when you run the cell): the execution starts inside your
+  own turn, so post the message to chat right after running the cell.
+- `automatic=False` — the click-to-launch pattern used by `seeker_pipeline_wf` and
+  `trekker_pipeline_wf`: the user clicks the button *after your turn has ended*. You are not
+  running then and cannot post anything, so the notice must be rendered **by the launch cell
+  itself** with `w_text_output(...)`, inside `if execution is not None:` and **before**
+  `await execution.wait()` (anything after the await is withheld until the pipeline finishes).
+  Also state it in chat when you present the cells, worded for what is about to happen.
 
 The message must always tell the user that they may **shut down the notebook pod while the
 workflow runs to save on compute costs**, and that doing so will not interrupt the execution.
