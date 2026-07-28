@@ -100,7 +100,8 @@ if execution is not None:
 </example>
 
 <long_running_guidance>
-After launching the workflow execution, display this message to the user:
+After launching the workflow execution, display this message to the user **in full** — do not
+shorten it or drop the pod shutdown advice:
 
-"The TrekkerQ_P Partitioner is now running on Latch compute and will take some time to finish. It is safe to close this tab while the workflow runs. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, reopen the notebook and the agent will resume from where you left off."
+"The TrekkerQ_P Partitioner is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
 </long_running_guidance>

@@ -80,5 +80,8 @@ These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `
 </self_eval_criteria>
 
 <long_running_guidance>
-The RCTD run on Latch compute may take significant time. After launching, use the long-running guidance in the respective workflow doc ("safe to close this tab; reopen when complete and the agent resumes").
+The RCTD run on Latch compute may take significant time. After launching, display the
+`<long_running_guidance>` message from the respective workflow doc in full — including the advice
+that the user may shut down the notebook pod while the workflow runs to save on compute costs,
+then restart the pod and reopen the notebook when it completes.
 </long_running_guidance>

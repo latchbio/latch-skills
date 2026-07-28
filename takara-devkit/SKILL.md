@@ -102,6 +102,22 @@ those workflow docs specify. Never withhold the `w_workflow` cell waiting for th
 in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
 start the pipeline.
 
+## Long-running workflows
+
+Every workflow in `wf/` runs on **Latch compute**, separately from this notebook pod. As soon as
+an execution starts, display the `<long_running_guidance>` message from that workflow's doc —
+verbatim and in full. This is not optional and is not superseded by anything else you are doing;
+if the doc has no such block, say the same thing in your own words.
+
+The message must always tell the user that they may **shut down the notebook pod while the
+workflow runs to save on compute costs**, and that doing so will not interrupt the execution.
+They restart the pod, reopen the notebook, and the agent resumes when the workflow finishes.
+
+This applies only to `wf/` workflow executions. Analyses that run *in* the notebook pod
+(`steps/background_removal.md`, `steps/feature_selection.md`,
+`steps/dimensionality_reduction.md`, `steps/clustering.md`) have the opposite requirement — the
+user must leave the notebook open until they complete.
+
 ## Latch-specific execution
 
 If `latch-workflows`, `latch-plots-ui`, or `latch-data-access` are available, prefer them for:
