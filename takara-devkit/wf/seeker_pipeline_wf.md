@@ -49,8 +49,10 @@ Only proceed to collect Seeker pipeline parameters after this is resolved and an
 - **Genome choice** → `genome_choice`
   - `"PREBUILT"` (default) — uses the selected `genome` reference.
   - `"CUSTOM"` — uses a user-supplied genome directory via `igenomes_base`.
+  - **Always offer both** in the parameter entry widgets — never assume `"PREBUILT"`.
 - **Custom genome base directory** → `igenomes_base` (`LatchDir`, optional)
-  - Only required when `genome_choice="CUSTOM"`.
+  - Only required when `genome_choice="CUSTOM"`, and only then is it passed in `params`.
+  - Collect it with a directory picker that appears when the user selects `"CUSTOM"`.
   - Must contain `Annotation/Genes/genes.gtf` and `Sequence/STARIndex/` subdirectories.
 - **Execution name** → `execution_name` (`str`, **required**)
   - Names the run and the output subdirectory created under `outdir`.
@@ -80,6 +82,10 @@ Rules for the launch cell:
   which assumes params are hard-coded rather than entered through widgets. For the Seeker and
   Trekker pipelines, `automatic=False` is correct.
 - Gate only the button's *enabled state* with `readonly=not params_ready`, never the call itself.
+- Always offer **both genome sources**. Render a `PREBUILT` / `CUSTOM` choice, and swap the input
+  below it reactively: the prebuilt genome list for `PREBUILT`, a directory picker for
+  `igenomes_base` for `CUSTOM`. Never hard-code `genome_choice="PREBUILT"` — the user must be able
+  to supply their own genome directory.
 - Collect the file and directory parameters with `w_ldata_picker` (`file_type="file"` / `"dir"`).
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
@@ -97,6 +103,7 @@ required field is set.
 ```python
 from lplots.widgets.text import w_text_input
 from lplots.widgets.select import w_select
+from lplots.widgets.radio import w_radio_group
 from lplots.widgets.ldata import w_ldata_picker
 
 w_sample = w_text_input(
@@ -113,16 +120,41 @@ w_tile_id = w_text_input(
 )
 w_fastq_1 = w_ldata_picker(label="Read 1 FASTQ", file_type="file", key="seeker_fastq_1")
 w_fastq_2 = w_ldata_picker(label="Read 2 FASTQ", file_type="file", key="seeker_fastq_2")
-w_genome = w_select(
-    label="Reference genome",
-    options=[
-        "GRCh38", "GRCm38", "GRCm39", "GRCh38_mm10", "mRatBN7.2", "GRCz11",
-        "Mmul_10", "calJac4", "GRCg6a", "Guppy_female_1.0_MT", "BDGP6",
-        "XENLA_10.1", "WBPSI7", "TAIR10", "Glycine_max_v2.1", "B73_RefGen_v4",
-        "Sorghum",
-    ],
-    key="seeker_genome",
+w_genome_choice = w_radio_group(
+    label="Genome source",
+    options=["PREBUILT", "CUSTOM"],
+    default="PREBUILT",
+    key="seeker_genome_choice",
 )
+
+# reading .value here makes the cell re-run when the user switches source,
+# so the matching input below swaps in automatically
+genome_choice_v = w_genome_choice.value or "PREBUILT"
+
+w_genome = None
+w_igenomes_base = None
+
+if genome_choice_v == "PREBUILT":
+    w_genome = w_select(
+        label="Reference genome",
+        options=[
+            "GRCh38", "GRCm38", "GRCm39", "GRCh38_mm10", "mRatBN7.2", "GRCz11",
+            "Mmul_10", "calJac4", "GRCg6a", "Guppy_female_1.0_MT", "BDGP6",
+            "XENLA_10.1", "WBPSI7", "TAIR10", "Glycine_max_v2.1", "B73_RefGen_v4",
+            "Sorghum",
+        ],
+        key="seeker_genome",
+    )
+else:
+    w_igenomes_base = w_ldata_picker(
+        label="Custom genome base directory (igenomes_base)",
+        file_type="dir",
+        key="seeker_igenomes_base",
+        appearance={
+            "help_text": "Must contain Annotation/Genes/genes.gtf and Sequence/STARIndex/"
+        },
+    )
+
 w_execution_name = w_text_input(label="Execution name", key="seeker_execution_name")
 w_outdir = w_ldata_picker(label="Output directory", file_type="dir", key="seeker_outdir")
 ```
@@ -147,7 +179,6 @@ class Sample:
 sample_v = w_sample.value or ""
 experiment_date_v = w_experiment_date.value or ""     # "YYYY-MM-DD", e.g. "2023-07-19"
 tile_id_v = w_tile_id.value or ""
-genome_v = w_genome.value or ""
 execution_name_v = w_execution_name.value or ""
 
 # picker values are LPath or None — never call .path on None
@@ -155,9 +186,17 @@ fastq_1_v = w_fastq_1.value
 fastq_2_v = w_fastq_2.value
 outdir_v = w_outdir.value
 
+# only one of these two widgets exists, depending on the genome source
+genome_choice_v = w_genome_choice.value or "PREBUILT"
+genome_v = (w_genome.value or "") if w_genome is not None else ""
+igenomes_base_v = w_igenomes_base.value if w_igenomes_base is not None else None
+
+genome_ready = bool(genome_v) if genome_choice_v == "PREBUILT" else igenomes_base_v is not None
+
 params_ready = (
-    all([sample_v, experiment_date_v, tile_id_v, genome_v, execution_name_v])
+    all([sample_v, experiment_date_v, tile_id_v, execution_name_v])
     and all(v is not None for v in (fastq_1_v, fastq_2_v, outdir_v))
+    and genome_ready
 )
 
 params = {
@@ -170,11 +209,18 @@ params = {
             fastq_2=LatchFile(fastq_2_v.path) if fastq_2_v is not None else None,
         )
     ],
-    "genome": genome_v,
-    "genome_choice": "PREBUILT",
+    "genome_choice": genome_choice_v,
     "execution_name": execution_name_v,
     "outdir": LatchDir(outdir_v.path) if outdir_v is not None else None,
 }
+
+# pass only the key that belongs to the selected genome source
+if genome_choice_v == "PREBUILT":
+    params["genome"] = genome_v
+else:
+    params["igenomes_base"] = (
+        LatchDir(igenomes_base_v.path) if igenomes_base_v is not None else None
+    )
 
 # ALWAYS called — never inside a conditional, or the launch button will not render
 w = w_workflow(
@@ -196,8 +242,10 @@ if execution is not None:
         workflow_outputs = list(res.output.values())
 ```
 
-For `genome_choice="CUSTOM"`, add a `w_ldata_picker(file_type="dir")` for `igenomes_base` and pass
-`LatchDir(igenomes_base_v.path)` in `params` — surface it only if the user asks for a custom genome.
+Both genome sources are always offered: the `w_radio_group` picks `PREBUILT` or `CUSTOM`, and the
+matching input swaps in reactively — the prebuilt genome `w_select` for `PREBUILT`, the
+`igenomes_base` directory picker for `CUSTOM`. Only the key belonging to the selected source is
+passed in `params`.
 </example>
 
 <long_running_guidance>
