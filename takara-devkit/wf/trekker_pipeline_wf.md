@@ -120,36 +120,115 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
 </outputs>
 
 <instructions>
-After collecting all required parameters from the user, confirm they are ready before executing the pipeline. Say:
-> "All parameters are set. Let me know when you're ready to start the Trekker pipeline."
-Only generate and execute the code cell below once the user confirms.
+Once the pre-pipeline questions are resolved, **immediately generate and run both cells below** — the
+parameter widget cell and the launch cell. Do **not** wait for the user to confirm in chat before
+generating the launch cell, and do not ask them to tell you when to launch. The user launches the
+pipeline by clicking the button that the launch cell renders.
+
+Rules for the launch cell:
+
+- Call `w_workflow(...)` **unconditionally at the top level of the cell.** Never place it inside an
+  `if`, a `try`, or a loop body that can be skipped, and never withhold it because the widget values
+  still look empty. An unrendered `w_workflow` is a missing launch button — that is the failure mode
+  this pattern exists to prevent.
+- Pass `automatic=False` so the workflow launches on click instead of firing the moment the cell
+  runs. **This deliberately overrides the `automatic=True` default in `latch-workflows/SKILL.md`**,
+  which assumes params are hard-coded rather than entered through widgets. For the Trekker and
+  Seeker pipelines, `automatic=False` is correct.
+- Gate only the button's *enabled state* with `readonly=not params_ready`, never the call itself.
+- Collect the file and directory parameters with `w_ldata_picker` (`file_type="file"` / `"dir"`).
+  Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
+  `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
+  the cell before `w_workflow` is reached, which removes the button.
+
+After both cells render, tell the user:
+> "Fill in the parameters above, then click **Launch Trekker workflow** to start the pipeline."
+
+The cell re-runs reactively as widget values change, so the button enables on its own once every
+required field is set.
 </instructions>
 
 <example>
-Single reaction:
+Single reaction — **cell 1, parameter entry widgets:**
 ```python
-import asyncio
+from lplots.widgets.text import w_text_input
+from lplots.widgets.select import w_select
+from lplots.widgets.ldata import w_ldata_picker
+
+w_sample_id = w_text_input(label="Sample ID", key="trekker_sample_id")
+w_analysis_date = w_text_input(
+    label="Analysis date", key="trekker_analysis_date",
+    appearance={"placeholder": "YYYY-MM-DD"},
+)
+w_tile_id = w_text_input(label="Tile ID", key="trekker_tile_id")
+w_sc_platform = w_select(
+    label="Single-cell platform",
+    options=[
+        "TrekkerU_C", "TrekkerU_CX", "Trekker5C_CX", "TrekkerFX_FLEX", "TrekkerU_M",
+        "TrekkerU_R", "TrekkerU_RVDJ", "TrekkerU_RATAC",
+        "TrekkerU_IL", "TrekkerU_PIP", "TrekkerQ_P",
+    ],
+    key="trekker_sc_platform",
+)
+w_fastq_cb = w_ldata_picker(
+    label="Read 1 FASTQ (fastq_cb)", file_type="file", key="trekker_fastq_cb",
+)
+w_fastq_tags = w_ldata_picker(
+    label="Read 2 FASTQ (fastq_tags)", file_type="file", key="trekker_fastq_tags",
+)
+w_sc_outdir = w_ldata_picker(
+    label="Single-cell platform output directory (sc_outdir)", file_type="dir",
+    key="trekker_sc_outdir",
+)
+w_output_dir = w_ldata_picker(
+    label="Output directory", file_type="dir", key="trekker_output_dir",
+)
+```
+
+The user may select the FASTQs in the pickers or attach them with the attach button — if they
+attach, set the picker's `default` to the attached `latch://` path so the cell stays in sync.
+
+**Cell 2, launch:**
+```python
 from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
+sample_id_v = w_sample_id.value or ""
+analysis_date_v = w_analysis_date.value or ""
+tile_id_v = w_tile_id.value or ""
+sc_platform_v = w_sc_platform.value or ""
+
+# picker values are LPath or None — never call .path on None
+fastq_cb_v = w_fastq_cb.value
+fastq_tags_v = w_fastq_tags.value
+sc_outdir_v = w_sc_outdir.value
+output_dir_v = w_output_dir.value
+
+params_ready = (
+    all([sample_id_v, analysis_date_v, tile_id_v, sc_platform_v])
+    and all(v is not None for v in (fastq_cb_v, fastq_tags_v, sc_outdir_v, output_dir_v))
+)
+
 params = {
-    "sample_id": "",                            # required — set by user
-    "analysis_date": "YYYYMMDD",                # required — "YYYYMMDD"
-    "tile_id": "",                              # required — set by user
-    "fastq_cb": LatchFile("latch://..."),       # required — set by user
-    "fastq_tags": LatchFile("latch://..."),     # required — set by user
-    "sc_outdir": LatchDir("latch://..."),       # required — set by user
-    "sc_platform": "",                          # required — set by user
-    "output_dir": LatchDir("latch://..."),      # required — set by user
+    "sample_id": sample_id_v,
+    "analysis_date": analysis_date_v.replace("-", ""),      # normalized to "YYYYMMDD"
+    "tile_id": tile_id_v,
+    "fastq_cb": LatchFile(fastq_cb_v.path) if fastq_cb_v is not None else None,
+    "fastq_tags": LatchFile(fastq_tags_v.path) if fastq_tags_v is not None else None,
+    "sc_outdir": LatchDir(sc_outdir_v.path) if sc_outdir_v is not None else None,
+    "sc_platform": sc_platform_v,
+    "output_dir": LatchDir(output_dir_v.path) if output_dir_v is not None else None,
 }
 
+# ALWAYS called — never inside a conditional, or the launch button will not render
 w = w_workflow(
     wf_name="wf.__init__.trekker_pipeline_wf",
     key="trekker_workflow_run_1",
     version="1.4.11-909971",
     params=params,
-    automatic=True,
-    label="Trekker workflow",
+    automatic=False,                # user clicks the button to launch
+    readonly=not params_ready,      # button disabled until every field is set
+    label="Launch Trekker workflow",
 )
 execution = w.value
 
@@ -160,45 +239,42 @@ if execution is not None:
         workflow_outputs = list(res.output.values())
 ```
 
-Multiple reactions (launch all in parallel, await together):
+Multiple reactions (one button per reaction, await all together). Build one set of parameter
+entry widgets per reaction in cell 1 — same widgets as above, with `key` suffixed by the
+reaction number — then in cell 2:
 ```python
 import asyncio
 from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
+# one dict per reaction, each built from that reaction's widgets as in the single-reaction example
 all_params = [
     {
-        "sample_id": "reaction_1",
-        "analysis_date": "YYYYMMDD",
-        "tile_id": "",
-        "fastq_cb": LatchFile("latch://..."),
-        "fastq_tags": LatchFile("latch://..."),
-        "sc_outdir": LatchDir("latch://..."),
-        "sc_platform": "",
-        "output_dir": LatchDir("latch://..."),
-    },
-    {
-        "sample_id": "reaction_2",
-        "analysis_date": "YYYYMMDD",
-        "tile_id": "",
-        "fastq_cb": LatchFile("latch://..."),
-        "fastq_tags": LatchFile("latch://..."),
-        "sc_outdir": LatchDir("latch://..."),
-        "sc_platform": "",
-        "output_dir": LatchDir("latch://..."),
+        "sample_id": w_sample_id_1.value or "",
+        "analysis_date": (w_analysis_date_1.value or "").replace("-", ""),
+        "tile_id": w_tile_id_1.value or "",
+        "fastq_cb": LatchFile(w_fastq_cb_1.value.path) if w_fastq_cb_1.value is not None else None,
+        "fastq_tags": LatchFile(w_fastq_tags_1.value.path) if w_fastq_tags_1.value is not None else None,
+        "sc_outdir": LatchDir(w_sc_outdir_1.value.path) if w_sc_outdir_1.value is not None else None,
+        "sc_platform": w_sc_platform_1.value or "",
+        "output_dir": LatchDir(w_output_dir_1.value.path) if w_output_dir_1.value is not None else None,
     },
     # add one entry per reaction
 ]
 
 executions = []
 for i, params in enumerate(all_params, start=1):
+    ready_i = all(v not in (None, "") for v in params.values())
+
+    # ALWAYS called for every reaction — one button each
     w = w_workflow(
         wf_name="wf.__init__.trekker_pipeline_wf",
         key=f"trekker_workflow_run_{i}",
         version="1.4.11-909971",
         params=params,
-        automatic=True,
-        label=f"Trekker workflow — reaction {i}",
+        automatic=False,
+        readonly=not ready_i,
+        label=f"Launch Trekker workflow — reaction {i}",
     )
     if w.value is not None:
         executions.append(w.value)
@@ -213,7 +289,7 @@ workflow_outputs = [
 </example>
 
 <long_running_guidance>
-After launching the workflow execution, display this message to the user:
+Once the user clicks the launch button and the execution starts, display this message to the user:
 
 "The Trekker pipeline is now running on Latch compute and will take some time to finish. It is safe to close this tab while the workflow runs. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, reopen the notebook and the agent will resume from where you left off."
 </long_running_guidance>

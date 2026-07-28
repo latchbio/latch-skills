@@ -70,13 +70,37 @@ Resolve `<skill-root>` to the directory where this skill is checked out in the c
 
 ## Requesting files from the user
 
-Whenever a step needs a file the agent does not already have (e.g. a tissue
-image, a reference, an h5ad data file), ask the user to provide it using the **attach button in
-the Agent text interface**. Do not build a custom file picker widget — that does not work in this
-environment. If the user can't attach (e.g. the file isn't in their local environment), fall back to
-asking them for its Latch Data path directly. An exception to this rule is the entry of parameters
-for the seeker_pipeline_wf and trekker_pipeline_wf - for these pipelines build the parameter
-entry widgets for the customer.
+Whenever a step needs a single file or directory the agent does not already have (e.g. a tissue
+image, a reference, an h5ad data file), give the user **both** ways to provide it:
+
+1. Render a `w_ldata_picker` widget so they can select it from Latch Data — set
+   `file_type="file"` or `file_type="dir"` to match what the step needs (see the
+   `latch-data-access` skill for the full API).
+2. Tell them in the same message that they may instead use the **attach button in the Agent
+   text interface** if they'd rather, or if the file isn't in Latch Data yet.
+
+Either route is acceptable — use whichever the user supplies first. Render the picker
+unconditionally so it is always visible, and always check `.value` for `None` before using it.
+The picker returns an `LPath`: use `picker.value.path` when constructing `LatchFile(...)` or
+`LatchDir(...)`, and the `LPath` itself for `download(...)` / `sync_to`.
+
+```python
+from lplots.widgets.ldata import w_ldata_picker
+
+h5ad_picker = w_ldata_picker(label="H5AD file", file_type="file", key="h5ad_input")
+
+if h5ad_picker.value is not None:
+    h5ad_path = h5ad_picker.value          # LPath
+```
+
+If neither route works, fall back to asking the user for the Latch Data path directly.
+
+This applies to **simple, single file or directory inputs only**. It does not apply to the
+multi-parameter entry for `seeker_pipeline_wf` and `trekker_pipeline_wf` — for those pipelines
+build the full parameter entry widget set **and the launch cell at the same time**, exactly as
+those workflow docs specify. Never withhold the `w_workflow` cell waiting for the user to confirm
+in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
+start the pipeline.
 
 ## Latch-specific execution
 

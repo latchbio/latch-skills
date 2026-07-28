@@ -41,7 +41,7 @@ For each candidate, capture: organism, tissue/region, disease/condition, develop
 **1d. If no compatible reference is found.** Don't dead-end:
 1. Tell the user what you searched and why nothing matched, then **ask for more detail** (a more specific or a broader tissue term, an alternative organism name, a related model system, does the user have a particular repository that they want to search) and **search again**.
 2. If it still fails, fall back to **user-supplied**: ask the user to either
-   - download a reference to **LData** and **attach it** with the attach button in the Agent interface (a `.h5ad`, or a `.rds` that is a spacexr `Reference` or Seurat object), **or**
+   - download a reference to **LData** and provide it either by selecting it in a `w_ldata_picker` (`file_type="file"`) you render, or with the attach button in the Agent interface (a `.h5ad`, or a `.rds` that is a spacexr `Reference` or Seurat object), **or**
    - paste a **direct download URL** to such a file.
 
 **1e. Convert the chosen reference.** Hand the single chosen reference to the builder (`wf/rctd_reference_builder_wf.md`):

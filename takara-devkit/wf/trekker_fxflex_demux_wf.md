@@ -66,7 +66,7 @@ Once chemistry (and the optional labeling approach) are resolved, proceed to col
     Sample2,A-A02
     ```
   - **If provided, this file takes precedence over `sample_labels`.**
-  - Ask the user to provide it using the attach button in the Agent text interface, or supply its Latch Data path.
+  - Offer both input routes: render a `w_ldata_picker` (`file_type="file"`) for it and tell the user they may instead use the attach button in the Agent text interface. If neither works, ask for its Latch Data path.
 </parameters>
 
 <outputs>
