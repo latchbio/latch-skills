@@ -61,12 +61,25 @@ If a step requires Takara helper code, import from the skill's `lib/` directory:
 
 ```python
 import sys
-sys.path.insert(0, "<skill-root>/lib")
+
+TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+
+# A `takara` package already bound to a different path shadows this one — sys.modules caching makes
+# a later sys.path.insert silently ineffective, and the import below then fails. Purge, then pin.
+for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+    del sys.modules[_name]
+while TAKARA_LIB in sys.path:
+    sys.path.remove(TAKARA_LIB)
+sys.path.insert(0, TAKARA_LIB)
 
 from takara.background_removal import KitType, remove_background
 ```
 
-Resolve `<skill-root>` to the directory where this skill is checked out in the current environment.
+Use that one path everywhere in this skill. Do not resolve the lib directory some other way per
+step: two different paths for the same `takara` package is what produces the "stale cached takara
+module" import failure, because whichever one is imported first wins for the rest of the session.
+If the skill is genuinely checked out elsewhere in the current environment, change `TAKARA_LIB`
+here and keep every step consistent with it.
 
 ## Requesting files from the user
 
@@ -133,6 +146,17 @@ advice: `seeker_pipeline_wf`, `trekker_pipeline_wf`, `rctd_wf`, `trekker_fxflex_
 `fastq_concatenator_wf`, `h5ad_merger_wf`, `rctd_reference_builder_wf`) launch with
 `automatic=True` inside your own turn and may keep their in-turn `await` — but do not tell the user
 to shut the pod down during one of those.
+
+**Always render a resume button next to the launch cell.** Nothing in Plots can start an agent turn —
+`w_button`, `w_workflow` and the reactive `.value` mechanism all re-run *cells in the kernel*, and none
+of them posts to the agent chat. So when a long workflow finishes hours later, you are not running and
+cannot act. Without a button already on screen, the user's only recourse is to interrupt you and type
+"continue", which is confusing and undiscoverable. Every workflow carrying the pod-shutdown advice
+therefore gets a `w_button` rendered in the same turn as its launch cell, gated on `if button.value:`,
+that reads Latch Data and either reports the outputs or says the run is not done yet. Where the next
+step is self-contained — the Seeker and Trekker QC report — the button performs it in full, so the
+happy path needs no agent turn at all. Never promise the user that you will "resume from where you
+left off": you cannot, and saying so is what makes them sit and wait.
 
 **Determining that a workflow has finished.** The execution runs on Latch compute, outside this pod,
 so the notebook can never tell you its status. Never claim a workflow is still running because a cell

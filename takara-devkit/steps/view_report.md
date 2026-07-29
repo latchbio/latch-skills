@@ -3,6 +3,12 @@ Open the pipeline-generated HTML report in the user's browser and confirm whethe
 </goal>
 
 <method>
+**First check whether this step has already happened.** The Seeker and Trekker launch cells render a
+**Show my QC report** button (cell 3 of `wf/seeker_pipeline_wf.md` / `wf/trekker_pipeline_wf.md`) that
+does everything below in the kernel, without an agent turn. On the normal path the user clicks it and
+the link is already on screen — in that case skip straight to step 3 and ask the follow-up question. Do
+the work yourself only when the link has not been rendered.
+
 1. Identify the report file produced by the Reads to Counts step. It will be named `{sample_name}_Report.html`.
 
 2. **Optimize the report and display a direct link:**
@@ -11,7 +17,16 @@ Open the pipeline-generated HTML report in the user's browser and confirm whethe
 
    ```python
    import sys
-   sys.path.insert(0, "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib")
+
+   TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+
+   # A `takara` package already bound to a different path shadows this one — sys.modules caching
+   # makes a later sys.path.insert silently ineffective, and the import below then fails. Purge, then pin.
+   for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+       del sys.modules[_name]
+   while TAKARA_LIB in sys.path:
+       sys.path.remove(TAKARA_LIB)
+   sys.path.insert(0, TAKARA_LIB)
 
    from latch.ldata.path import LPath
    from takara.optimize_html_images import optimize

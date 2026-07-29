@@ -12,7 +12,16 @@ To confirm kit type at this step if not already known: ask the user "Was this da
 
 ```python
 import sys
-sys.path.insert(0, "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib")
+
+TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+
+# A `takara` package already bound to a different path shadows this one — sys.modules caching makes
+# a later sys.path.insert silently ineffective, and the import below then fails. Purge, then pin.
+for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+    del sys.modules[_name]
+while TAKARA_LIB in sys.path:
+    sys.path.remove(TAKARA_LIB)
+sys.path.insert(0, TAKARA_LIB)
 
 from takara import remove_background, KitType
 ```

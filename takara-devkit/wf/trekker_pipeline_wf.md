@@ -148,11 +148,17 @@ Rules for the launch cell:
   down while it runs. An `await` parks the cell in a permanently-running state, binds no result, and
   survives no pod restart — it is the reason the agent gets stuck reporting "still running" after the
   pipeline has finished. With multiple reactions a `gather` is worse still: it blocks on the slowest
-  reaction, so no reaction's results become available until every one of them is done. Determine
-  completion with the separate results cell (cell 3) instead. See `<resuming>`.
+  reaction, so no reaction's results become available until every one of them is done.
+- **Generate all three cells in the same turn**, including the resume cell (cell 3). Nothing in Plots
+  can start an agent turn, so when the pipeline finishes hours later there is no way for you to be
+  running. The resume button is what the user clicks instead; if it is not already on screen when
+  they leave, their only recourse is to interrupt you and type "continue", which is exactly the
+  confusing flow this pattern exists to remove. See `<resuming>`.
 
-After both cells render, tell the user:
-> "Fill in the parameters above, then click **Launch Trekker workflow** to start the pipeline."
+After all three cells render, tell the user:
+> "Fill in the parameters above, then click **Launch Trekker workflow** to start the pipeline. When it
+> finishes — however long that takes, and even if you shut the pod down in between — click **Show my
+> QC report** below and the report link will appear. You don't need to message me for that step."
 
 The cell re-runs reactively as widget values change, so the button enables on its own once every
 required field is set.
@@ -253,8 +259,9 @@ if execution is not None:
             "— and you may also **shut down the notebook pod while the workflow runs, which "
             "stops the notebook compute charges and saves cost**. Shutting the pod down will "
             "not interrupt the workflow. You may monitor the progress of the workflow in the "
-            "workflows executions tab. When the workflow has completed, restart the pod, "
-            "reopen the notebook, and the agent will resume from where you left off."
+            "workflows executions tab. When the workflow has completed, restart the pod, reopen "
+            "the notebook, and click **Show my QC report** below — that is all you need to do, "
+            "and you do not have to message the agent for it."
         ),
         appearance={"message_box": "info"},
         key="trekker_long_running_notice",
@@ -263,47 +270,99 @@ if execution is not None:
 # The cell ENDS here. Do not `await execution.wait()` — see <resuming>.
 ```
 
-**Cell 3, results** — generate this cell too, but do not run it until the user comes back and says
-the pipeline has finished. It reads Latch Data rather than kernel state, so it works even after the
-pod has been shut down and restarted:
+**Cell 3, resume** — generate and run this in the same turn as cells 1 and 2, so the button is on
+screen before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is
+involved, which is what makes the whole post-pipeline step work without the user having to message
+the agent. It reads Latch Data rather than kernel state, so it also survives a pod restart:
 ```python
-from latch.ldata.path import LPath
+import sys
+
+from lplots.widgets.button import w_button
 from lplots.widgets.text import w_text_output
 
-# re-derived from the widgets, not from the launch cell's variables
-output_dir_v = w_output_dir.value
-sample_id_v = w_sample_id.value or ""
+TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
 
-run_dir = LPath(f"{output_dir_v.path.rstrip('/')}/{sample_id_v}")
+resume = w_button(label="Show my QC report", key="trekker_resume")
 
-try:
-    contents = sorted(p.path for p in run_dir.iterdir())
-except Exception:
-    contents = []
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value:
+    # A `takara` package already bound to a different path shadows this one: sys.modules caching
+    # makes a later sys.path.insert silently ineffective. Purge, then pin.
+    for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+        del sys.modules[_name]
+    while TAKARA_LIB in sys.path:
+        sys.path.remove(TAKARA_LIB)
+    sys.path.insert(0, TAKARA_LIB)
 
-if contents:
-    w_text_output(
-        content="Trekker outputs in `{}`:\n\n".format(run_dir.path)
-        + "\n".join(f"- `{p}`" for p in contents),
-        appearance={"message_box": "success"},
-        key="trekker_outputs_found",
-    )
-else:
-    w_text_output(
-        content=(
-            f"Nothing under `{run_dir.path}` yet — the execution is most likely still running. "
-            "Check its status in the workflows executions tab, then re-run this cell once it "
-            "reaches SUCCEEDED."
-        ),
-        appearance={"message_box": "warning"},
-        key="trekker_outputs_pending",
-    )
+    from pathlib import Path
+
+    from latch.ldata.path import LPath
+    from takara.optimize_html_images import optimize
+
+    # re-derived from the widgets, not from the launch cell's variables
+    run_dir = LPath(f"{w_output_dir.value.path.rstrip('/')}/{w_sample_id.value or ''}")
+    report_name = f"{w_sample_id.value or ''}_Report.html"
+
+    def _find(root: LPath, suffix: str, depth: int = 3) -> LPath | None:
+        try:
+            entries = list(root.iterdir())
+        except Exception:          # not a directory, or not created yet
+            return None
+        for p in entries:
+            if p.path.endswith(suffix):
+                return p
+        if depth > 1:
+            for p in entries:
+                hit = _find(p, suffix, depth - 1)
+                if hit is not None:
+                    return hit
+        return None
+
+    report = _find(run_dir, report_name)
+
+    if report is None:
+        w_text_output(
+            content=(
+                f"No `{report_name}` under `{run_dir.path}` yet, so the pipeline has not finished "
+                "writing its outputs. Check the execution's status in the workflows executions tab; "
+                "if it is still running, click this button again once it reaches SUCCEEDED. If it "
+                "shows FAILED, tell me and I'll look at the logs."
+            ),
+            appearance={"message_box": "warning"},
+            key="trekker_resume_pending",
+        )
+    else:
+        report_dir = report.path.rsplit("/", 1)[0]
+        optimize(src=report, ldata_dst_dir=report_dir)
+        optimized = LPath(report_dir) / (Path(report.path).stem + ".optimized.html")
+
+        w_text_output(
+            content=(
+                "**Trekker pipeline complete.** "
+                f"[Open the QC report](https://console.latch.bio/data/{optimized.node_id()})\n\n"
+                "Message me when you've looked it over and we'll continue with secondary analysis."
+            ),
+            appearance={"message_box": "success"},
+            key="trekker_resume_report",
+        )
 ```
 
-Confirm the run subdirectory name against the `output_dir` layout the pipeline actually writes; if
-`iterdir()` is unavailable in the runtime, browse it with `w_ldata_browser(dir=run_dir)` instead. The
-point is only to confirm the outputs exist in Latch Data and to locate `<sample_id>_Report.html` for
-`steps/view_report.md`.
+This cell does the whole of `steps/view_report.md` — locate the report, optimize it, render the
+link — so on the happy path the user never needs to prompt the agent between launching the pipeline
+and reading their QC report. Three notes:
+
+- Keep the `sys.modules` purge. Without it, a `takara` package imported earlier from a different
+  path wins and `takara.optimize_html_images` fails to resolve. Use `TAKARA_LIB` as the one path
+  convention everywhere in this skill.
+- Confirm the run subdirectory name against the `output_dir` layout the pipeline actually writes;
+  `_find` recurses a few levels, so a nested report is still located.
+- If `iterdir()` is unavailable in the runtime, replace `_find` with a `w_ldata_browser(dir=run_dir)`
+  and have the user select the report; everything downstream is unchanged.
+
+**Multiple reactions:** render **one resume button per reaction**, each with its own
+`key=f"trekker_resume_{i}"`, label `f"Show my QC report — reaction {i}"`, and that reaction's own
+`output_dir` / `sample_id`. Reactions finish at different times, so each must be independently
+clickable — never one button that waits for all of them.
 
 Multiple reactions (one button per reaction, each launching independently). Build one set of parameter
 entry widgets per reaction in cell 1 — same widgets as above, with `key` suffixed by the
@@ -354,8 +413,8 @@ for i, params in enumerate(all_params, start=1):
                 "the workflow runs, which stops the notebook compute charges and saves cost**. "
                 "Shutting the pod down will not interrupt the workflow. You may monitor the "
                 "progress of the workflow in the workflows executions tab. When the workflow "
-                "has completed, restart the pod, reopen the notebook, and the agent will "
-                "resume from where you left off."
+                f"has completed, restart the pod, reopen the notebook, and click **Show my QC "
+                f"report — reaction {i}** below. You do not have to message the agent for it."
             ),
             appearance={"message_box": "info"},
             key=f"trekker_long_running_notice_{i}",
@@ -382,26 +441,36 @@ running at that moment and cannot post anything to chat, so this message has to 
 
 The message text:
 
-"The Trekker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
+"The Trekker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and click **Show my QC report** below — that is all you need to do, and you do not have to message the agent for it."
+
+Never tell the user that you will "resume from where you left off" or that you will pick the run up
+automatically. Nothing in Plots can start an agent turn, so that is not true, and it is what leads
+users to sit waiting and then interrupt you. Point them at the resume button instead.
 </long_running_guidance>
 
 <resuming>
-The launch cell does not wait for the pipeline. When the user comes back — typically hours later,
-possibly after a pod restart — and says the run has finished, or types "continue":
+The launch cell does not wait for the pipeline, and you will not be running when it finishes. **The
+resume button in cell 3 is the intended path** — it does the whole report step in the kernel without
+you. Make sure it is on screen before the user leaves, one per reaction.
+
+If the user does message you after a launch — "continue", "is it done?", "the pipeline finished", or
+anything else — treat that as a resume signal and check Latch Data *before* answering:
 
 - **The notebook is not the source of truth for whether the pipeline finished.** The execution runs
   on Latch compute, entirely outside this pod. Never report "the pipeline is still running" because
   a cell looks busy, because `workflow_outputs` is undefined, or because you have no record of a
   completion — none of those are evidence about the execution.
-- **Check Latch Data.** Run the results cell (cell 3). Outputs under the run's `output_dir` mean the
-  pipeline finished; an empty or missing directory means it is still running or failed, and the user
-  should check the workflows executions tab.
+- **Look under the run's `output_dir`.** Outputs there mean the pipeline finished; an empty or
+  missing directory means it is still running or failed, and the user should check the workflows
+  executions tab.
 - **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
-  are gone and are not needed. Re-run cell 1 and cell 3; the widget values persist with their `key`s,
-  and everything downstream is derived from the Latch Data paths.
+  are gone and are not needed. Re-run cells 1 and 3; the widget values persist with their `key`s, and
+  everything downstream is derived from the Latch Data paths. Re-rendering cell 3 also puts the
+  resume buttons back on screen.
 - **With multiple reactions**, check each reaction's output directory independently and proceed with
   whichever have finished. One slow reaction must not hold up the others.
-- Once the outputs are present, go straight on to `steps/view_report.md` — locate
-  `<sample_id>_Report.html` in the run directory and open it. Do not ask the user to re-confirm that
-  the pipeline finished.
+- If the report link has not been rendered yet, do that work yourself rather than telling the user to
+  click the button they just bypassed — same steps as cell 3, then continue to
+  `steps/view_report.md`'s follow-up question. Do not ask the user to re-confirm that the pipeline
+  finished.
 </resuming>

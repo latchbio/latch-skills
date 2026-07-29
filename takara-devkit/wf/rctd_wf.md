@@ -77,64 +77,86 @@ execution = w.value
 # shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
 ```
 
-**Results cell** — generate it now, run it when the user says the execution has finished. It reads
-Latch Data rather than kernel state, so it works even after a pod restart:
+**Resume cell** — generate and run it in the same turn as the launch cell, so the button is on screen
+before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is involved,
+which matters because nothing in Plots can start one. It reads Latch Data rather than kernel state, so
+it also survives a pod restart:
 ```python
 from latch.ldata.path import LPath
+from lplots.widgets.button import w_button
 from lplots.widgets.text import w_text_output
 
 run_dir = LPath(f"{output_directory_path.rstrip('/')}/{run_name}")   # same values passed in params
 
-try:
-    contents = sorted(p.path for p in run_dir.iterdir())
-except Exception:
-    contents = []
+resume = w_button(label="Check my RCTD results", key="rctd_resume")
 
-if contents:
-    w_text_output(
-        content="RCTD outputs in `{}`:\n\n".format(run_dir.path)
-        + "\n".join(f"- `{p}`" for p in contents),
-        appearance={"message_box": "success"},
-        key="rctd_outputs_found",
-    )
-else:
-    w_text_output(
-        content=(
-            f"Nothing under `{run_dir.path}` yet — the execution is most likely still running. "
-            "Check its status in the workflows executions tab, then re-run this cell once it "
-            "reaches SUCCEEDED."
-        ),
-        appearance={"message_box": "warning"},
-        key="rctd_outputs_pending",
-    )
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value:
+    try:
+        contents = sorted(p.path for p in run_dir.iterdir())
+    except Exception:
+        contents = []
+
+    h5ad = next((p for p in contents if p.endswith("_RCTD.h5ad")), None)
+
+    if h5ad is None:
+        w_text_output(
+            content=(
+                f"No `_RCTD.h5ad` under `{run_dir.path}` yet, so the run has not finished writing "
+                "its outputs. Check the execution's status in the workflows executions tab; if it is "
+                "still running, click this button again once it reaches SUCCEEDED. If it shows "
+                "FAILED, tell me and I'll look at the logs."
+            ),
+            appearance={"message_box": "warning"},
+            key="rctd_resume_pending",
+        )
+    else:
+        w_text_output(
+            content=(
+                f"**RCTD is complete.** Results are in `{run_dir.path}`:\n\n"
+                + "\n".join(f"- `{p}`" for p in contents)
+                + "\n\nMessage me and I'll merge the per-bead cell types into your working AnnData "
+                "and plot them."
+            ),
+            appearance={"message_box": "success"},
+            key="rctd_resume_ready",
+        )
 ```
 
-If `iterdir()` is unavailable in the runtime, browse the run directory with
-`w_ldata_browser(dir=run_dir)` instead — the point is only to confirm `<run_name>_RCTD.h5ad` exists
-in Latch Data so `steps/rctd.md` can load it.
+Unlike the Seeker and Trekker pipelines, the step *after* RCTD is not self-contained — merging
+`first_type` / `second_type` / `spot_class` into the working AnnData is analysis code that has to be
+written for the specific object in play. So this button confirms the results are ready and tells the
+user to message the agent; it cannot finish the step on its own. If `iterdir()` is unavailable in the
+runtime, browse the run directory with `w_ldata_browser(dir=run_dir)` instead.
 </example>
 
 <long_running_guidance>
 After launching the workflow execution, display this message to the user **in full** — do not
 shorten it or drop the pod shutdown advice:
 
-"RCTD is now running on Latch compute and will take some time to finish (the fitPixels step is the longest; it logs progress and ETA per batch). It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor progress in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume and load the results."
+"RCTD is now running on Latch compute and will take some time to finish (the fitPixels step is the longest; it logs progress and ETA per batch). It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor progress in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and click **Check my RCTD results** below — it will confirm the results are ready and tell you what happens next."
 
 Because that advice invites the user to shut the pod down, the launch cell must **not** block on
 `await execution.wait()` — an await parks the cell in a permanently-running state, binds no result,
 and does not survive a pod restart.
+
+Never tell the user that you will "resume and load the results" automatically. Nothing in Plots can
+start an agent turn, so that is not true, and it is what leads users to sit waiting and then interrupt
+you. Point them at the resume button instead.
 </long_running_guidance>
 
 <resuming>
-The launch cell does not wait for the execution. When the user comes back and says it has finished,
-or types "continue":
+The launch cell does not wait for the execution, and you will not be running when it finishes. The
+resume button is what tells the user their results are ready; make sure it is on screen before they
+leave. When they then message you — "continue", "is it done?", "RCTD finished", or anything else —
+treat that as a resume signal and check Latch Data *before* answering:
 
 - **The notebook is not the source of truth.** The execution runs on Latch compute, outside this pod.
   Never report "RCTD is still running" because a cell looks busy, because `workflow_outputs` is
   undefined, or because you have no record of it completing — none of those are evidence.
-- **Check Latch Data.** Run the results cell. `<run_name>_RCTD.h5ad` present under
-  `output_directory/<run_name>/` means the run finished; nothing there means it is still running or
-  failed, and the user should check the workflows executions tab.
+- **Check Latch Data.** `<run_name>_RCTD.h5ad` present under `output_directory/<run_name>/` means the
+  run finished; nothing there means it is still running or failed, and the user should check the
+  workflows executions tab.
 - **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
   are gone and are not needed. Everything downstream is derived from the Latch Data paths.
 - Once `<run_name>_RCTD.h5ad` is present, go straight on to step 3 of `steps/rctd.md` and merge the
