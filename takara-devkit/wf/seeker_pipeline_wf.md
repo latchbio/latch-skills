@@ -90,9 +90,14 @@ Rules for the launch cell:
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
   the cell before `w_workflow` is reached, which removes the button.
-- Include the `w_text_output(...)` long-running notice inside `if execution is not None:`, before
-  the `await`. The click lands after your turn ends, so a chat message you would "display after
-  launching" never happens — the cell has to render it. See `<long_running_guidance>`.
+- Include the `w_text_output(...)` long-running notice inside `if execution is not None:`. The click
+  lands after your turn ends, so a chat message you would "display after launching" never happens —
+  the cell has to render it. See `<long_running_guidance>`.
+- **Never call `await execution.wait()` in the launch cell.** The Seeker pipeline runs for hours, and
+  the notice explicitly invites the user to shut the notebook pod down while it runs. An `await`
+  parks the cell in a permanently-running state, binds no result, and survives no pod restart — it is
+  the reason the agent gets stuck reporting "still running" after the pipeline has finished. Determine
+  completion with the separate results cell (cell 3) instead. See `<resuming>`.
 
 After both cells render, tell the user:
 > "Fill in the parameters above, then click **Launch Seeker workflow** to start the pipeline."
@@ -240,8 +245,7 @@ execution = w.value
 
 if execution is not None:
     # The long-running notice MUST be rendered here, by the cell itself. The click happens
-    # after the agent's turn has ended, so the agent is not running and cannot post it to
-    # chat. This widget renders before the await, so it appears immediately on click.
+    # after the agent's turn has ended, so the agent is not running and cannot post it to chat.
     w_text_output(
         content=(
             "The Seeker pipeline is now running on Latch compute and will take some time to "
@@ -256,12 +260,49 @@ if execution is not None:
         key="seeker_long_running_notice",
     )
 
-    res = await execution.wait()
-
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        # inspect workflow outputs for downstream analysis
-        workflow_outputs = list(res.output.values())
+# The cell ENDS here. Do not `await execution.wait()` — see <resuming>.
 ```
+
+**Cell 3, results** — generate this cell too, but do not run it until the user comes back and says
+the pipeline has finished. It reads Latch Data rather than kernel state, so it works even after the
+pod has been shut down and restarted:
+```python
+from latch.ldata.path import LPath
+from lplots.widgets.text import w_text_output
+
+# re-derived from the widgets, not from the launch cell's variables
+outdir_v = w_outdir.value
+execution_name_v = w_execution_name.value or ""
+
+run_dir = LPath(f"{outdir_v.path.rstrip('/')}/{execution_name_v}")
+
+try:
+    contents = sorted(p.path for p in run_dir.iterdir())
+except Exception:
+    contents = []
+
+if contents:
+    w_text_output(
+        content="Seeker outputs in `{}`:\n\n".format(run_dir.path)
+        + "\n".join(f"- `{p}`" for p in contents),
+        appearance={"message_box": "success"},
+        key="seeker_outputs_found",
+    )
+else:
+    w_text_output(
+        content=(
+            f"Nothing under `{run_dir.path}` yet — the execution is most likely still running. "
+            "Check its status in the workflows executions tab, then re-run this cell once it "
+            "reaches SUCCEEDED."
+        ),
+        appearance={"message_box": "warning"},
+        key="seeker_outputs_pending",
+    )
+```
+
+If `iterdir()` is unavailable in the runtime, browse the run directory with
+`w_ldata_browser(dir=run_dir)` instead — the point is only to confirm the outputs exist in Latch
+Data and to locate `<sample>_Report.html` for `steps/view_report.md`.
 
 Both genome sources are always offered: the `w_radio_group` picks `PREBUILT` or `CUSTOM`, and the
 matching input swaps in reactively — the prebuilt genome `w_select` for `PREBUILT`, the
@@ -276,8 +317,8 @@ running at that moment and cannot post anything to chat, so this message has to 
 
 1. **In the launch cell**, as the `w_text_output(...)` inside `if execution is not None:` shown in
    the example above. This is what the user actually sees on click, and it is the only delivery
-   that survives the agent's turn ending. It must come *before* `await execution.wait()` —
-   anything after the await does not render until the whole pipeline finishes.
+   that survives the agent's turn ending. Nothing may follow it in the cell that blocks — an
+   `await execution.wait()` would withhold everything after it until the pipeline finishes.
 2. **In chat, when you present the two cells**, phrased for what is about to happen: tell the user
    that once they click Launch the pipeline runs on Latch compute, and that they may then shut the
    notebook pod down to save cost.
@@ -286,3 +327,22 @@ The message text:
 
 "The Seeker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
 </long_running_guidance>
+
+<resuming>
+The launch cell does not wait for the pipeline. When the user comes back — typically hours later,
+possibly after a pod restart — and says the run has finished, or types "continue":
+
+- **The notebook is not the source of truth for whether the pipeline finished.** The execution runs
+  on Latch compute, entirely outside this pod. Never report "the pipeline is still running" because
+  a cell looks busy, because `workflow_outputs` is undefined, or because you have no record of a
+  completion — none of those are evidence about the execution.
+- **Check Latch Data.** Run the results cell (cell 3). Outputs under `outdir/<execution_name>/` mean
+  the pipeline finished; an empty or missing directory means it is still running or failed, and the
+  user should check the workflows executions tab.
+- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
+  are gone and are not needed. Re-run cell 1 and cell 3; the widget values persist with their `key`s,
+  and everything downstream is derived from the Latch Data paths.
+- Once the outputs are present, go straight on to `steps/view_report.md` — locate
+  `<sample>_Report.html` in the run directory and open it. Do not ask the user to re-confirm that the
+  pipeline finished.
+</resuming>

@@ -91,12 +91,45 @@ w = w_workflow(
 )
 execution = w.value
 
-if execution is not None:
-    res = await execution.wait()
-
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        workflow_outputs = list(res.output.values())
+# Do NOT `await execution.wait()` here — the partitioner runs for a long time and the user is told
+# they may shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
 ```
+
+**Results cell** — generate it now, run it when the user says the execution has finished. It reads
+Latch Data rather than kernel state, so it works even after a pod restart:
+```python
+from latch.ldata.path import LPath
+from lplots.widgets.text import w_text_output
+
+out_dir = LPath("latch://...")          # the same output_directory passed in params
+
+try:
+    fastqs = sorted(p.path for p in out_dir.iterdir() if p.path.endswith(".fastq.gz"))
+except Exception:
+    fastqs = []
+
+if fastqs:
+    w_text_output(
+        content="Demultiplexed FASTQs in `{}`:\n\n".format(out_dir.path)
+        + "\n".join(f"- `{p}`" for p in fastqs),
+        appearance={"message_box": "success"},
+        key="qp_demux_outputs_found",
+    )
+else:
+    w_text_output(
+        content=(
+            f"No demultiplexed FASTQs under `{out_dir.path}` yet — the execution is most likely "
+            "still running. Check its status in the workflows executions tab, then re-run this cell "
+            "once it reaches SUCCEEDED."
+        ),
+        appearance={"message_box": "warning"},
+        key="qp_demux_outputs_pending",
+    )
+```
+
+If `iterdir()` is unavailable in the runtime, browse the directory with
+`w_ldata_browser(dir=out_dir)` instead — the point is only to confirm the per-group
+`_R1.fastq.gz` / `_R2.fastq.gz` pairs exist in Latch Data before feeding them into Trekker.
 </example>
 
 <long_running_guidance>
@@ -104,4 +137,25 @@ After launching the workflow execution, display this message to the user **in fu
 shorten it or drop the pod shutdown advice:
 
 "The TrekkerQ_P Partitioner is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
+
+Because that advice invites the user to shut the pod down, the launch cell must **not** block on
+`await execution.wait()` — an await parks the cell in a permanently-running state, binds no result,
+and does not survive a pod restart.
 </long_running_guidance>
+
+<resuming>
+The launch cell does not wait for the execution. When the user comes back and says it has finished,
+or types "continue":
+
+- **The notebook is not the source of truth.** The execution runs on Latch compute, outside this pod.
+  Never report "the partitioner is still running" because a cell looks busy, because
+  `workflow_outputs` is undefined, or because you have no record of it completing — none of those are
+  evidence.
+- **Check Latch Data.** Run the results cell. Per-group `_R1.fastq.gz` / `_R2.fastq.gz` pairs under
+  `output_directory` mean the run finished; nothing there means it is still running or failed, and
+  the user should check the workflows executions tab.
+- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
+  are gone and are not needed. The demultiplexed FASTQ paths are all that the Trekker pipeline needs.
+- Once the FASTQs are present, go straight on to `wf/trekker_pipeline_wf.md`, one execution per
+  demultiplexed group. Do not ask the user to re-confirm that the run finished.
+</resuming>

@@ -116,13 +116,32 @@ in your own words.
 - `automatic=False` — the click-to-launch pattern used by `seeker_pipeline_wf` and
   `trekker_pipeline_wf`: the user clicks the button *after your turn has ended*. You are not
   running then and cannot post anything, so the notice must be rendered **by the launch cell
-  itself** with `w_text_output(...)`, inside `if execution is not None:` and **before**
-  `await execution.wait()` (anything after the await is withheld until the pipeline finishes).
-  Also state it in chat when you present the cells, worded for what is about to happen.
+  itself** with `w_text_output(...)`, inside `if execution is not None:`. Also state it in chat
+  when you present the cells, worded for what is about to happen.
 
 The message must always tell the user that they may **shut down the notebook pod while the
 workflow runs to save on compute costs**, and that doing so will not interrupt the execution.
 They restart the pod, reopen the notebook, and the agent resumes when the workflow finishes.
+
+**Never block on `await execution.wait()` in a cell whose workflow the user has been told they may
+shut the pod down for.** An `await` parks the cell in a permanently-running state, binds no result,
+and does not survive a pod restart — the notebook then looks busy forever and the agent reports
+"still running" long after the workflow has succeeded. End the launch cell at the notice, and put
+completion checking in a separate results cell. This covers every workflow carrying the pod-shutdown
+advice: `seeker_pipeline_wf`, `trekker_pipeline_wf`, `rctd_wf`, `trekker_fxflex_demux_wf`,
+`trekker_qp_demux_wf`. The short workflows without that advice (`trekker_merger_wf`,
+`fastq_concatenator_wf`, `h5ad_merger_wf`, `rctd_reference_builder_wf`) launch with
+`automatic=True` inside your own turn and may keep their in-turn `await` — but do not tell the user
+to shut the pod down during one of those.
+
+**Determining that a workflow has finished.** The execution runs on Latch compute, outside this pod,
+so the notebook can never tell you its status. Never claim a workflow is still running because a cell
+looks busy, because an output variable is undefined, or because you have no record of it completing.
+Check **Latch Data** for the expected outputs under the run's output directory, and point the user at
+the workflows executions tab for status. After a pod restart, kernel state (`execution`, `res`,
+`workflow_outputs`) is gone and is not needed — widget values persist by `key`, and every downstream
+step derives from Latch Data paths. See the `<resuming>` block in `wf/seeker_pipeline_wf.md` and
+`wf/trekker_pipeline_wf.md`.
 
 This applies only to `wf/` workflow executions. Analyses that run *in* the notebook pod
 (`steps/background_removal.md`, `steps/feature_selection.md`,

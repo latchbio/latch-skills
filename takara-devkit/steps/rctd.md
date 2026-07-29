@@ -84,4 +84,10 @@ The RCTD run on Latch compute may take significant time. After launching, displa
 `<long_running_guidance>` message from the respective workflow doc in full — including the advice
 that the user may shut down the notebook pod while the workflow runs to save on compute costs,
 then restart the pod and reopen the notebook when it completes.
+
+The launch cell does not wait for the execution, so when the user returns, follow the `<resuming>`
+block in `wf/rctd_wf.md`: check Latch Data for `<run_name>_RCTD.h5ad` under
+`output_directory/<run_name>/` rather than judging from notebook state, then continue at Step 3
+above. Never report that RCTD is still running just because the notebook has no record of it
+finishing.
 </long_running_guidance>

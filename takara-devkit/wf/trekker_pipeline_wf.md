@@ -13,8 +13,8 @@ Before collecting any pipeline parameters, ask the user the following questions 
 2. **Multiple reactions?**
    > "Was the experiment for this Trekker tile split into multiple single-nuclei reactions (i.e. processed with different sample indices during sequencing)?"
    - If **yes**: ask the user whether all reactions share the **same tile ID** or span **multiple tile IDs**.
-     - **Same tile ID**: recommend to launch all Trekker pipeline executions in parallel (one per reaction) and await them all together, then run a **single** `wf/trekker_merger_wf.md` to merge all outputs.
-     - **Multiple tile IDs**: recommend to launch all Trekker pipeline executions in parallel and await them together, then run a **separate** `wf/trekker_merger_wf.md` for **each tile ID group** — only merge outputs that share the same tile ID. Inform the user that they will need one merged sample ID and output directory per tile group.
+     - **Same tile ID**: recommend to launch all Trekker pipeline executions in parallel (one per reaction), then — once every reaction's outputs are present in Latch Data (see `<resuming>`) — run a **single** `wf/trekker_merger_wf.md` to merge all outputs.
+     - **Multiple tile IDs**: recommend to launch all Trekker pipeline executions in parallel, then — once their outputs are present — run a **separate** `wf/trekker_merger_wf.md` for **each tile ID group** — only merge outputs that share the same tile ID. Inform the user that they will need one merged sample ID and output directory per tile group.
    - Inform the user now so they can plan sample IDs, tile IDs, and output directories for each reaction.
 
 3. **Multiple lanes / multiple FASTQ files?**
@@ -140,9 +140,16 @@ Rules for the launch cell:
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
   the cell before `w_workflow` is reached, which removes the button.
-- Include the `w_text_output(...)` long-running notice inside `if execution is not None:`, before
-  the `await`. The click lands after your turn ends, so a chat message you would "display after
-  launching" never happens — the cell has to render it. See `<long_running_guidance>`.
+- Include the `w_text_output(...)` long-running notice inside `if execution is not None:`. The click
+  lands after your turn ends, so a chat message you would "display after launching" never happens —
+  the cell has to render it. See `<long_running_guidance>`.
+- **Never call `await execution.wait()` (or `await asyncio.gather(...)`) in the launch cell.** The
+  Trekker pipeline runs for hours, and the notice explicitly invites the user to shut the notebook pod
+  down while it runs. An `await` parks the cell in a permanently-running state, binds no result, and
+  survives no pod restart — it is the reason the agent gets stuck reporting "still running" after the
+  pipeline has finished. With multiple reactions a `gather` is worse still: it blocks on the slowest
+  reaction, so no reaction's results become available until every one of them is done. Determine
+  completion with the separate results cell (cell 3) instead. See `<resuming>`.
 
 After both cells render, tell the user:
 > "Fill in the parameters above, then click **Launch Trekker workflow** to start the pipeline."
@@ -238,8 +245,7 @@ execution = w.value
 
 if execution is not None:
     # The long-running notice MUST be rendered here, by the cell itself. The click happens
-    # after the agent's turn has ended, so the agent is not running and cannot post it to
-    # chat. This widget renders before the await, so it appears immediately on click.
+    # after the agent's turn has ended, so the agent is not running and cannot post it to chat.
     w_text_output(
         content=(
             "The Trekker pipeline is now running on Latch compute and will take some time to "
@@ -254,17 +260,55 @@ if execution is not None:
         key="trekker_long_running_notice",
     )
 
-    res = await execution.wait()
-
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        workflow_outputs = list(res.output.values())
+# The cell ENDS here. Do not `await execution.wait()` — see <resuming>.
 ```
 
-Multiple reactions (one button per reaction, await all together). Build one set of parameter
+**Cell 3, results** — generate this cell too, but do not run it until the user comes back and says
+the pipeline has finished. It reads Latch Data rather than kernel state, so it works even after the
+pod has been shut down and restarted:
+```python
+from latch.ldata.path import LPath
+from lplots.widgets.text import w_text_output
+
+# re-derived from the widgets, not from the launch cell's variables
+output_dir_v = w_output_dir.value
+sample_id_v = w_sample_id.value or ""
+
+run_dir = LPath(f"{output_dir_v.path.rstrip('/')}/{sample_id_v}")
+
+try:
+    contents = sorted(p.path for p in run_dir.iterdir())
+except Exception:
+    contents = []
+
+if contents:
+    w_text_output(
+        content="Trekker outputs in `{}`:\n\n".format(run_dir.path)
+        + "\n".join(f"- `{p}`" for p in contents),
+        appearance={"message_box": "success"},
+        key="trekker_outputs_found",
+    )
+else:
+    w_text_output(
+        content=(
+            f"Nothing under `{run_dir.path}` yet — the execution is most likely still running. "
+            "Check its status in the workflows executions tab, then re-run this cell once it "
+            "reaches SUCCEEDED."
+        ),
+        appearance={"message_box": "warning"},
+        key="trekker_outputs_pending",
+    )
+```
+
+Confirm the run subdirectory name against the `output_dir` layout the pipeline actually writes; if
+`iterdir()` is unavailable in the runtime, browse it with `w_ldata_browser(dir=run_dir)` instead. The
+point is only to confirm the outputs exist in Latch Data and to locate `<sample_id>_Report.html` for
+`steps/view_report.md`.
+
+Multiple reactions (one button per reaction, each launching independently). Build one set of parameter
 entry widgets per reaction in cell 1 — same widgets as above, with `key` suffixed by the
 reaction number — then in cell 2:
 ```python
-import asyncio
 from lplots.widgets.workflow import w_workflow
 from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
@@ -317,12 +361,9 @@ for i, params in enumerate(all_params, start=1):
             key=f"trekker_long_running_notice_{i}",
         )
 
-results = await asyncio.gather(*[e.wait() for e in executions])
-workflow_outputs = [
-    list(res.output.values())
-    for res in results
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}
-]
+# The cell ENDS here. No `await asyncio.gather(...)` — reactions finish at different times, and
+# blocking on all of them is what strands the notebook. Use one results cell per reaction instead,
+# keyed by that reaction's own output directory.
 ```
 </example>
 
@@ -333,8 +374,8 @@ running at that moment and cannot post anything to chat, so this message has to 
 
 1. **In the launch cell**, as the `w_text_output(...)` inside `if execution is not None:` shown in
    the example above. This is what the user actually sees on click, and it is the only delivery
-   that survives the agent's turn ending. It must come *before* `await execution.wait()` —
-   anything after the await does not render until the whole pipeline finishes.
+   that survives the agent's turn ending. Nothing may follow it in the cell that blocks — an
+   `await execution.wait()` would withhold everything after it until the pipeline finishes.
 2. **In chat, when you present the two cells**, phrased for what is about to happen: tell the user
    that once they click Launch the pipeline runs on Latch compute, and that they may then shut the
    notebook pod down to save cost.
@@ -343,3 +384,24 @@ The message text:
 
 "The Trekker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and the agent will resume from where you left off."
 </long_running_guidance>
+
+<resuming>
+The launch cell does not wait for the pipeline. When the user comes back — typically hours later,
+possibly after a pod restart — and says the run has finished, or types "continue":
+
+- **The notebook is not the source of truth for whether the pipeline finished.** The execution runs
+  on Latch compute, entirely outside this pod. Never report "the pipeline is still running" because
+  a cell looks busy, because `workflow_outputs` is undefined, or because you have no record of a
+  completion — none of those are evidence about the execution.
+- **Check Latch Data.** Run the results cell (cell 3). Outputs under the run's `output_dir` mean the
+  pipeline finished; an empty or missing directory means it is still running or failed, and the user
+  should check the workflows executions tab.
+- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
+  are gone and are not needed. Re-run cell 1 and cell 3; the widget values persist with their `key`s,
+  and everything downstream is derived from the Latch Data paths.
+- **With multiple reactions**, check each reaction's output directory independently and proceed with
+  whichever have finished. One slow reaction must not hold up the others.
+- Once the outputs are present, go straight on to `steps/view_report.md` — locate
+  `<sample_id>_Report.html` in the run directory and open it. Do not ask the user to re-confirm that
+  the pipeline finished.
+</resuming>
