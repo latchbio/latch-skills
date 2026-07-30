@@ -275,30 +275,16 @@ screen before the user walks away. Clicking it re-runs *this cell in the kernel*
 involved, which is what makes the whole post-pipeline step work without the user having to message
 the agent. It reads Latch Data rather than kernel state, so it also survives a pod restart:
 ```python
-import sys
+from pathlib import Path
 
+from latch.ldata.path import LPath
 from lplots.widgets.button import w_button
 from lplots.widgets.text import w_text_output
-
-TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
 
 resume = w_button(label="Show my QC report", key="trekker_resume")
 
 # reading .value makes this cell reactive — the click re-runs it
 if resume.value:
-    # A `takara` package already bound to a different path shadows this one: sys.modules caching
-    # makes a later sys.path.insert silently ineffective. Purge, then pin.
-    for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
-        del sys.modules[_name]
-    while TAKARA_LIB in sys.path:
-        sys.path.remove(TAKARA_LIB)
-    sys.path.insert(0, TAKARA_LIB)
-
-    from pathlib import Path
-
-    from latch.ldata.path import LPath
-    from takara.optimize_html_images import optimize
-
     # re-derived from the widgets, not from the launch cell's variables
     run_dir = LPath(f"{w_output_dir.value.path.rstrip('/')}/{w_sample_id.value or ''}")
     report_name = f"{w_sample_id.value or ''}_Report.html"
@@ -332,28 +318,43 @@ if resume.value:
             key="trekker_resume_pending",
         )
     else:
-        report_dir = report.path.rsplit("/", 1)[0]
-        optimize(src=report, ldata_dst_dir=report_dir)
-        optimized = LPath(report_dir) / (Path(report.path).stem + ".optimized.html")
+        # Image optimization is a nice-to-have; the link is the deliverable. If the helper library
+        # cannot be imported, link the original report rather than failing the whole cell.
+        link, note = report, ""
+        optimize, why = _load_takara_optimize()
+
+        if optimize is None:
+            note = f"\n\n_Images were not optimized ({why}), so the report may load slowly._"
+        else:
+            try:
+                report_dir = report.path.rsplit("/", 1)[0]
+                optimize(src=report, ldata_dst_dir=report_dir)
+                link = LPath(report_dir) / (Path(report.path).stem + ".optimized.html")
+            except Exception as e:
+                note = f"\n\n_Images were not optimized ({e!r}), so the report may load slowly._"
 
         w_text_output(
             content=(
                 "**Trekker pipeline complete.** "
-                f"[Open the QC report](https://console.latch.bio/data/{optimized.node_id()})\n\n"
+                f"[Open the QC report](https://console.latch.bio/data/{link.node_id()})\n\n"
                 "Message me when you've looked it over and we'll continue with secondary analysis."
+                + note
             ),
             appearance={"message_box": "success"},
             key="trekker_resume_report",
         )
 ```
 
-This cell does the whole of `steps/view_report.md` — locate the report, optimize it, render the
-link — so on the happy path the user never needs to prompt the agent between launching the pipeline
-and reading their QC report. Three notes:
+`_load_takara_optimize()` is the shared helper defined in `<takara_lib_import>` at the end of this
+doc — paste it into the cell above the button. Four notes:
 
-- Keep the `sys.modules` purge. Without it, a `takara` package imported earlier from a different
-  path wins and `takara.optimize_html_images` fails to resolve. Use `TAKARA_LIB` as the one path
-  convention everywhere in this skill.
+- **A failed import must never cost the user their report link.** `optimize` only shrinks embedded
+  images; if it is unavailable the original report still opens. That is why the import is resolved
+  through a helper that returns `None` instead of raising.
+- The helper locates the library by **verifying `optimize_html_images.py` exists** before putting a
+  directory on `sys.path`, rather than trusting a hard-coded path. A `ModuleNotFoundError: No module
+  named 'takara.optimize_html_images'` means a *different* `takara` package won the import — the
+  helper's purge plus `importlib.invalidate_caches()` is what prevents that.
 - Confirm the run subdirectory name against the `output_dir` layout the pipeline actually writes;
   `_find` recurses a few levels, so a nested report is still located.
 - If `iterdir()` is unavailable in the runtime, replace `_find` with a `w_ldata_browser(dir=run_dir)`
@@ -474,3 +475,79 @@ anything else — treat that as a resume signal and check Latch Data *before* an
   `steps/view_report.md`'s follow-up question. Do not ask the user to re-confirm that the pipeline
   finished.
 </resuming>
+
+<takara_lib_import>
+Paste this helper into the resume cell, above the button. It resolves the Takara helper library
+robustly and **never raises** — a missing library must cost the user image optimization, not their
+report link.
+
+```python
+import importlib
+import sys
+from pathlib import Path
+
+# Checked first, in order. If the skill is deployed somewhere else, add that path here.
+_TAKARA_HINTS = (
+    "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib",
+)
+# Searched only if no hint matches. Most specific first — an rglob over a large tree is slow.
+_TAKARA_SEARCH_ROOTS = (
+    "/opt/latch/plots-faas/runtime/mount",
+    "/opt/latch",
+    "/root",
+)
+
+
+def _find_takara_lib() -> str | None:
+    """Directory to place on sys.path so `takara.optimize_html_images` resolves, or None."""
+    for hint in _TAKARA_HINTS:
+        if (Path(hint) / "takara" / "optimize_html_images.py").is_file():
+            return hint
+    for root in _TAKARA_SEARCH_ROOTS:
+        try:
+            hit = next(Path(root).rglob("takara/optimize_html_images.py"), None)
+        except Exception:          # unreadable tree
+            hit = None
+        if hit is not None:
+            return str(hit.parent.parent)
+    return None
+
+
+def _load_takara_optimize():
+    """Returns (optimize, None) on success or (None, reason) on failure. Never raises."""
+    lib = _find_takara_lib()
+    if lib is None:
+        return None, (
+            "takara/optimize_html_images.py was not found under "
+            + ", ".join(_TAKARA_SEARCH_ROOTS)
+        )
+
+    # Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
+    # sys.path.insert does nothing: the cached package wins and its submodules are the only ones
+    # visible. That is what produces "No module named 'takara.optimize_html_images'" even though
+    # `takara` itself imports fine. Drop the cached package AND refresh the path finders.
+    for name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+        del sys.modules[name]
+    while lib in sys.path:
+        sys.path.remove(lib)
+    sys.path.insert(0, lib)
+    importlib.invalidate_caches()
+
+    try:
+        from takara.optimize_html_images import optimize
+    except Exception as e:                     # deployed copy missing the module, PIL absent, ...
+        return None, f"{e!r} (searched {lib})"
+
+    return optimize, None
+```
+
+Two rules this encodes, which apply anywhere in this skill that imports `takara`:
+
+- **Verify before trusting a path.** Check that `optimize_html_images.py` actually exists at a
+  location before putting it on `sys.path`. A hard-coded path that is wrong in the deployed
+  environment fails silently — `sys.path.insert` of a non-existent directory is a no-op — and the
+  import then resolves against some other `takara`.
+- **Purge `sys.modules` *and* call `importlib.invalidate_caches()`.** The purge handles a package
+  already bound to a different path; `invalidate_caches()` handles the import system's cached
+  directory listings, which otherwise keep a newly-added path's contents invisible.
+</takara_lib_import>

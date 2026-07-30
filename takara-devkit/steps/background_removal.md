@@ -11,17 +11,24 @@ To confirm kit type at this step if not already known: ask the user "Was this da
 ### Setup
 
 ```python
+import importlib
 import sys
+from pathlib import Path
 
 TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
 
-# A `takara` package already bound to a different path shadows this one — sys.modules caching makes
-# a later sys.path.insert silently ineffective, and the import below then fails. Purge, then pin.
+# Verify the module is actually there before trusting the path — sys.path.insert of a directory
+# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
+assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+# Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
+# sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
 for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
     del sys.modules[_name]
 while TAKARA_LIB in sys.path:
     sys.path.remove(TAKARA_LIB)
 sys.path.insert(0, TAKARA_LIB)
+importlib.invalidate_caches()
 
 from takara import remove_background, KitType
 ```

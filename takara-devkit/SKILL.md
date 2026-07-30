@@ -60,26 +60,43 @@ RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a sepa
 If a step requires Takara helper code, import from the skill's `lib/` directory:
 
 ```python
+import importlib
 import sys
+from pathlib import Path
 
 TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
 
-# A `takara` package already bound to a different path shadows this one — sys.modules caching makes
-# a later sys.path.insert silently ineffective, and the import below then fails. Purge, then pin.
+# Verify the module is actually there before trusting the path — sys.path.insert of a directory
+# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
+assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+# Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
+# sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
 for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
     del sys.modules[_name]
 while TAKARA_LIB in sys.path:
     sys.path.remove(TAKARA_LIB)
 sys.path.insert(0, TAKARA_LIB)
+importlib.invalidate_caches()
 
 from takara.background_removal import KitType, remove_background
 ```
 
-Use that one path everywhere in this skill. Do not resolve the lib directory some other way per
-step: two different paths for the same `takara` package is what produces the "stale cached takara
-module" import failure, because whichever one is imported first wins for the rest of the session.
-If the skill is genuinely checked out elsewhere in the current environment, change `TAKARA_LIB`
-here and keep every step consistent with it.
+Three rules, all of which exist because getting this wrong produces a confusing
+`ModuleNotFoundError` naming a *submodule* (`No module named 'takara.optimize_html_images'`) even
+though `takara` itself imported fine — the signature of a different `takara` winning the import:
+
+1. **Verify the path before using it.** Never trust a hard-coded lib directory blind.
+2. **Purge `sys.modules` and call `importlib.invalidate_caches()`.** The purge handles a package
+   bound to another path; `invalidate_caches()` handles cached directory listings that otherwise
+   keep a newly-added path's contents invisible.
+3. **Use one path convention everywhere in this skill.** Two paths for the same package means
+   whichever imports first wins for the session.
+
+For imports that are optional — `takara.optimize_html_images`, used only to shrink report images —
+use the non-raising `_load_takara_optimize()` helper in `<takara_lib_import>` at the end of
+`wf/seeker_pipeline_wf.md` instead, so a missing library degrades the output rather than failing the
+cell.
 
 ## Requesting files from the user
 
