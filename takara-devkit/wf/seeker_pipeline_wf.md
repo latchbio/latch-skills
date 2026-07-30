@@ -63,6 +63,17 @@ Only proceed to collect Seeker pipeline parameters after this is resolved and an
 </parameters>
 
 <outputs>
+Verified against the deployment source (`latch_platform/curioseeker`), not inferred. The entrypoint
+rewrites `outdir` to `f"{outdir.remote_path}/{execution_name}"` before handing it to Nextflow
+(`wf/entrypoint_curio.py:226`), so **every result lands under**:
+
+```
+<outdir>/<execution_name>/
+```
+
+The layout beneath that is nf-core `publishDir`, not something to assume. The QC report is named
+`<sample>_Report.html` (`modules/local/secondary/genreport.nf:23`, `bin/genreport.R:17`) — match on the
+`_Report.html` suffix and search down from the run directory rather than constructing a full path.
 </outputs>
 
 <instructions>
@@ -285,31 +296,38 @@ resume = w_button(label="Show my QC report", key="seeker_resume")
 
 # reading .value makes this cell reactive — the click re-runs it
 if resume.value:
-    # re-derived from the widgets, not from the launch cell's variables
+    # re-derived from the widgets, not from the launch cell's variables.
+    # The task nests everything under <outdir>/<execution_name>/ — see <outputs>.
     run_dir = LPath(f"{w_outdir.value.path.rstrip('/')}/{w_execution_name.value or ''}")
-    report_name = f"{w_sample.value or ''}_Report.html"
+    sample_v = w_sample.value or ""
 
-    def _find(root: LPath, suffix: str, depth: int = 3) -> LPath | None:
+    def _reports(root: LPath, depth: int) -> list[LPath]:
+        """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""
+        found: list[LPath] = []
         try:
             entries = list(root.iterdir())
         except Exception:          # not a directory, or not created yet
-            return None
+            return found
         for p in entries:
-            if p.path.endswith(suffix):
-                return p
-        if depth > 1:
-            for p in entries:
-                hit = _find(p, suffix, depth - 1)
-                if hit is not None:
-                    return hit
-        return None
+            name = p.path.rsplit("/", 1)[-1]
+            if name.endswith("_Report.html"):
+                found.append(p)
+            elif depth > 1:
+                found.extend(_reports(p, depth - 1))
+        return found
 
-    report = _find(run_dir, report_name)
+    # Search rather than construct a filename: nf-core decides the publish subdirectory, so the
+    # report's depth under the run directory is not something to assume.
+    # Rank on the FILENAME, not the full path — the run directory itself often contains the sample
+    # name, so matching on the path makes every candidate tie and another sample's report can win.
+    hits = _reports(run_dir, 6)
+    hits.sort(key=lambda p: not p.path.rsplit("/", 1)[-1].startswith(f"{sample_v}_"))
+    report = hits[0] if hits else None
 
     if report is None:
         w_text_output(
             content=(
-                f"No `{report_name}` under `{run_dir.path}` yet, so the pipeline has not finished "
+                f"No `*_Report.html` found under `{run_dir.path}`, so the pipeline has not finished "
                 "writing its outputs. Check the execution's status in the workflows executions tab; "
                 "if it is still running, click this button again once it reaches SUCCEEDED. If it "
                 "shows FAILED, tell me and I'll look at the logs."
@@ -355,7 +373,10 @@ doc — paste it into the cell above the button. Three notes:
   directory on `sys.path`, rather than trusting a hard-coded path. A `ModuleNotFoundError: No module
   named 'takara.optimize_html_images'` means a *different* `takara` package won the import — the
   helper's purge plus `importlib.invalidate_caches()` is what prevents that.
-- If `iterdir()` is unavailable in the runtime, replace `_find` with a `w_ldata_browser(dir=run_dir)`
+- **Never construct the report path from a guess.** `<outputs>` records the run directory the
+  deployed workflow actually creates; the publish subdirectory beneath it is nf-core's business, so
+  search for the `_Report.html` suffix instead of assembling a filename.
+- If `iterdir()` is unavailable in the runtime, replace `_reports` with `w_ldata_browser(dir=run_dir)`
   and have the user select the report; everything downstream is unchanged.
 
 Both genome sources are always offered: the `w_radio_group` picks `PREBUILT` or `CUSTOM`, and the

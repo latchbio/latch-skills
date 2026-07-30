@@ -175,6 +175,19 @@ step is self-contained — the Seeker and Trekker QC report — the button perfo
 happy path needs no agent turn at all. Never promise the user that you will "resume from where you
 left off": you cannot, and saying so is what makes them sit and wait.
 
+**Never construct an output path from a guess.** Each workflow doc's `<outputs>` section records the
+directory layout that workflow actually writes, verified against the deployment source in
+`latch_platform/`. Read it before looking for a result file. Two rules follow from it:
+
+- **Anchor at the output directory the user chose** and search downward for the file by suffix
+  (`_Report.html`, `_RCTD.h5ad`, `.fastq.gz`), rather than assembling a full path from the
+  parameters. Run directories are nested more deeply than the parameters suggest — Trekker puts
+  `<analysis_date>_<sample_id>/trekker_<sample_id>/output/` between `output_dir` and the report — and
+  a constructed path that is wrong reports "the pipeline hasn't finished" for a run that succeeded.
+- **Filenames are not always what the parameter names imply.** Trekker's report is
+  `<sample_id>_Trekker_Report.html` for the standard report and `<sample_id>_Report.html` only for the
+  extended one, so match a suffix and prefer the expected variant.
+
 **Determining that a workflow has finished.** The execution runs on Latch compute, outside this pod,
 so the notebook can never tell you its status. Never claim a workflow is still running because a cell
 looks busy, because an output variable is undefined, or because you have no record of it completing.

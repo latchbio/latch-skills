@@ -117,6 +117,33 @@ Only proceed to collect the remaining Trekker pipeline parameters after all thre
 </parameters>
 
 <outputs>
+Verified against the deployment source (`latch_platform/curiotrekker`), not inferred. The task returns
+`LatchOutputDir(out_dir, f"{output_dir.remote_path}/{analysis_date}_{sample_id}")`
+(`wf/trekker_wf.py:184`), and the pipeline script builds the tree below it
+(`wf/nuclei_locater_docker.sh:62-66`):
+
+```
+<output_dir>/
+└── <analysis_date>_<sample_id>/          # analysis_date is the YYYYMMDD form passed in params
+    ├── log/
+    └── trekker_<sample_id>/
+        ├── output/                       # ← the results you want
+        │   ├── <sample_id>_Trekker_Report.html     # the QC report
+        │   ├── <sample_id>_summary_metrics.csv
+        │   ├── <sample_id>_variable_features_clusters.csv
+        │   ├── <sample_id>_variable_features_spatial_moransi.txt
+        │   ├── <sample_id>_ConfPositioned_seurat_spatial.rds
+        │   └── intermediates/
+        └── misc/<tile_id>/
+```
+
+**Report filename.** `genreport.R:22-27` emits `<sample_id>_Trekker_Report.html` for the standard
+report and `<sample_id>_Report.html` for the extended one — so match on the `_Report.html` **suffix**
+rather than an exact name, and prefer the `_Trekker_` variant.
+
+Two things here are easy to get wrong and have already caused a failed run: the
+`<analysis_date>_<sample_id>` directory sits between `output_dir` and everything else, and the report
+is two levels below that. Search from `output_dir` rather than constructing a path.
 </outputs>
 
 <instructions>
@@ -286,33 +313,47 @@ resume = w_button(label="Show my QC report", key="trekker_resume")
 # reading .value makes this cell reactive — the click re-runs it
 if resume.value:
     # re-derived from the widgets, not from the launch cell's variables
-    run_dir = LPath(f"{w_output_dir.value.path.rstrip('/')}/{w_sample_id.value or ''}")
-    report_name = f"{w_sample_id.value or ''}_Report.html"
+    out_root = LPath(w_output_dir.value.path.rstrip("/"))
+    sample_v = w_sample_id.value or ""
+    date_v = (w_analysis_date.value or "").replace("-", "")      # params use YYYYMMDD
 
-    def _find(root: LPath, suffix: str, depth: int = 3) -> LPath | None:
+    def _reports(root: LPath, depth: int) -> list[LPath]:
+        """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""
+        found: list[LPath] = []
         try:
             entries = list(root.iterdir())
         except Exception:          # not a directory, or not created yet
-            return None
+            return found
         for p in entries:
-            if p.path.endswith(suffix):
-                return p
-        if depth > 1:
-            for p in entries:
-                hit = _find(p, suffix, depth - 1)
-                if hit is not None:
-                    return hit
-        return None
+            name = p.path.rsplit("/", 1)[-1]
+            if name.endswith("_Report.html"):
+                found.append(p)
+            elif depth > 1:
+                found.extend(_reports(p, depth - 1))
+        return found
 
-    report = _find(run_dir, report_name)
+    # Fast path: the layout the deployed workflow actually writes (see <outputs>). Falls back to a
+    # bounded search from output_dir, so a layout change costs speed, not correctness.
+    known = LPath(f"{out_root.path}/{date_v}_{sample_v}/trekker_{sample_v}/output")
+    hits = _reports(known, 1) or _reports(out_root, 6)
+
+    # Prefer this sample's report, and the standard "_Trekker_Report.html" over the extended one.
+    # Rank on the FILENAME, not the full path — the run directory itself usually contains the
+    # sample id, so matching on the path makes every candidate tie.
+    def _rank(p: LPath) -> tuple[bool, bool]:
+        name = p.path.rsplit("/", 1)[-1]
+        return (not name.startswith(f"{sample_v}_"), "_Trekker_Report.html" not in name)
+
+    hits.sort(key=_rank)
+    report = hits[0] if hits else None
 
     if report is None:
         w_text_output(
             content=(
-                f"No `{report_name}` under `{run_dir.path}` yet, so the pipeline has not finished "
-                "writing its outputs. Check the execution's status in the workflows executions tab; "
-                "if it is still running, click this button again once it reaches SUCCEEDED. If it "
-                "shows FAILED, tell me and I'll look at the logs."
+                f"No `*_Report.html` found under `{out_root.path}`, so the pipeline has not "
+                "finished writing its outputs. Check the execution's status in the workflows "
+                "executions tab; if it is still running, click this button again once it reaches "
+                "SUCCEEDED. If it shows FAILED, tell me and I'll look at the logs."
             ),
             appearance={"message_box": "warning"},
             key="trekker_resume_pending",
@@ -355,9 +396,11 @@ doc — paste it into the cell above the button. Four notes:
   directory on `sys.path`, rather than trusting a hard-coded path. A `ModuleNotFoundError: No module
   named 'takara.optimize_html_images'` means a *different* `takara` package won the import — the
   helper's purge plus `importlib.invalidate_caches()` is what prevents that.
-- Confirm the run subdirectory name against the `output_dir` layout the pipeline actually writes;
-  `_find` recurses a few levels, so a nested report is still located.
-- If `iterdir()` is unavailable in the runtime, replace `_find` with a `w_ldata_browser(dir=run_dir)`
+- **Never construct the report path from a guess.** The `<outputs>` section below records the layout
+  the deployed workflow actually writes; the fast path uses it and the bounded search is the safety
+  net. Matching an exact filename you assembled yourself is what produced
+  "No `continue_3_Report.html` under .../continue_3/continue_3" — two wrong guesses at once.
+- If `iterdir()` is unavailable in the runtime, replace `_reports` with `w_ldata_browser(dir=out_root)`
   and have the user select the report; everything downstream is unchanged.
 
 **Multiple reactions:** render **one resume button per reaction**, each with its own
