@@ -27,3 +27,14 @@ If adata.n_obs > 200000, display this message to the user after running the clus
 
 "Your Clustering analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
 </long_running_guidance>
+
+<new_tab_notice>
+The UMAP and spatial embeddings colored by cluster open in a **new tab** that the notebook does not
+switch to. Name it in chat, including the resolution so the user can tell repeat runs apart — see
+"Telling the user where results appeared" in `SKILL.md`:
+
+> Leiden clustering at resolution 0.5 found 14 clusters. The UMAP and spatial embeddings are in a
+> **new tab** named **Clustering — Leiden 0.5** — click it in the notebook to see them.
+
+If you run several resolutions, each opens its own tab; say which tab holds which resolution.
+</new_tab_notice>

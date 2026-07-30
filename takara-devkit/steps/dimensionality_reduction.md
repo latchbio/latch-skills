@@ -35,3 +35,14 @@ If adata.n_obs > 200000, display this message to the user after running the UMAP
 
 "Your Dimensionality Reduction analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
 </long_running_guidance>
+
+<new_tab_notice>
+The scree plot and the UMAP embeddings open in a **new tab** that the notebook does not switch to.
+Name it in chat — see "Telling the user where results appeared" in `SKILL.md`:
+
+> PCA and UMAP are done (10 PCs, neighbors=40). The scree plot and embedding are in a **new tab**
+> named **Dimensionality reduction** — click it in the notebook to see them.
+
+You are asking the user to judge an elbow and a separation, so they have to be looking at the plots
+before you ask.
+</new_tab_notice>

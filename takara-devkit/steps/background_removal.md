@@ -101,3 +101,13 @@ If adata.n_obs > 200000, display this message to the user after running the back
 
 "Your Background Removal analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
 </long_running_guidance>
+
+<new_tab_notice>
+The bead counts, density histogram, and spatial before/after plots open in a **new tab** that the
+notebook does not switch to. Name it in chat when you report the result — see "Telling the user where
+results appeared" in `SKILL.md`:
+
+> Background removal kept 71,402 of 84,213 beads. The plots opened in a **new tab** named
+> **Background removal** — click it in the notebook to check that the retained beads still trace the
+> tissue.
+</new_tab_notice>

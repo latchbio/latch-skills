@@ -182,10 +182,18 @@ Rules for the launch cell:
   they leave, their only recourse is to interrupt you and type "continue", which is exactly the
   confusing flow this pattern exists to remove. See `<resuming>`.
 
+- **Name the tab when you hand off.** These cells render in a **new tab** that the notebook does not
+  switch to, and every one of them needs a click. A launch button the user never finds is the same as
+  no launch button, and the resume button is worse — they come back hours later, see nothing, and
+  conclude the run was lost. With multiple reactions, say which tab holds which reaction's buttons.
+  See "Telling the user where results appeared" in `SKILL.md`.
+
 After all three cells render, tell the user:
-> "Fill in the parameters above, then click **Launch Trekker workflow** to start the pipeline. When it
-> finishes — however long that takes, and even if you shut the pod down in between — click **Show my
-> QC report** below and the report link will appear. You don't need to message me for that step."
+> "The parameter form and the **Launch Trekker workflow** button are in a **new tab** in this
+> notebook — click that tab, fill in the fields, then click Launch. When the pipeline finishes —
+> however long that takes, and even if you shut the pod down in between — come back to that same tab
+> and click **Show my QC report**; the report link appears right there. You don't need to message me
+> for that step."
 
 The cell re-runs reactively as widget values change, so the button enables on its own once every
 required field is set.
@@ -282,9 +290,9 @@ if execution is not None:
     w_text_output(
         content=(
             "The Trekker pipeline is now running on Latch compute and will take some time to "
-            "finish. It runs independently of this notebook, so it is safe to close this tab "
-            "— and you may also **shut down the notebook pod while the workflow runs, which "
-            "stops the notebook compute charges and saves cost**. Shutting the pod down will "
+            "finish. It runs independently of this notebook, so you may **shut down the "
+            "notebook pod while the workflow runs, which stops the notebook compute charges "
+            "and saves cost**. Shutting the pod down will "
             "not interrupt the workflow. You may monitor the progress of the workflow in the "
             "workflows executions tab. When the workflow has completed, restart the pod, reopen "
             "the notebook, and click **Show my QC report** below — that is all you need to do, "
@@ -452,9 +460,9 @@ for i, params in enumerate(all_params, start=1):
         w_text_output(
             content=(
                 f"Reaction {i}: the Trekker pipeline is now running on Latch compute and will "
-                "take some time to finish. It runs independently of this notebook, so it is "
-                "safe to close this tab — and you may also **shut down the notebook pod while "
-                "the workflow runs, which stops the notebook compute charges and saves cost**. "
+                "take some time to finish. It runs independently of this notebook, so you may "
+                "**shut down the notebook pod while the workflow runs, which stops the notebook "
+                "compute charges and saves cost**. "
                 "Shutting the pod down will not interrupt the workflow. You may monitor the "
                 "progress of the workflow in the workflows executions tab. When the workflow "
                 f"has completed, restart the pod, reopen the notebook, and click **Show my QC "
@@ -481,11 +489,13 @@ running at that moment and cannot post anything to chat, so this message has to 
    `await execution.wait()` would withhold everything after it until the pipeline finishes.
 2. **In chat, when you present the two cells**, phrased for what is about to happen: tell the user
    that once they click Launch the pipeline runs on Latch compute, and that they may then shut the
-   notebook pod down to save cost.
+   notebook pod down to save cost. In this version, **name the tab** rather than saying "below" —
+   the cells are in a tab the notebook did not switch to, so from chat the buttons are not below
+   anything. The in-cell version at (1) may keep "below", since it sits next to the button.
 
 The message text:
 
-"The Trekker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and click **Show my QC report** below — that is all you need to do, and you do not have to message the agent for it."
+"The Trekker pipeline is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so you may **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and click **Show my QC report** below — that is all you need to do, and you do not have to message the agent for it."
 
 Never tell the user that you will "resume from where you left off" or that you will pick the run up
 automatically. Nothing in Plots can start an agent turn, so that is not true, and it is what leads

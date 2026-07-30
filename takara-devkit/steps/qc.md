@@ -38,4 +38,18 @@ Permissive sanity checks (should hold true across tissue/disease):
 - Never >20% mito per bead
 - Never <25 genes per bead
 - Never <30 UMI per bead
+- The user was told, in chat, which tab holds the histograms and the threshold input widgets
 </self_eval_criteria>
+
+<new_tab_notice>
+This step is interactive — the histograms, the knee plot, and the threshold text inputs all live in a
+**new tab** that the notebook does not switch to. A user who never finds that tab cannot set a
+threshold, so name the tab in chat *before* you ask them for a value — see "Telling the user where
+results appeared" in `SKILL.md`:
+
+> The genes-per-bead histogram and the threshold input are in a **new tab** named **QC — genes per
+> bead** — click it in the notebook, then type a cutoff into the box and I'll tell you how many beads
+> it removes.
+
+Repeat this for each of the three metrics if each opens its own tab.
+</new_tab_notice>

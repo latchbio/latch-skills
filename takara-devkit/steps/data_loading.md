@@ -40,6 +40,17 @@ viewer = w_h5(
 ```
 
 Once the data is loaded and confirmed, **always ask the user whether they have an H&E or other pathology image of the tissue they'd like to overlay** — proceed to `steps/image_overlay.md` if yes.
+
+### Step 1c — Point the user at the viewer's tab
+
+The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat
+message that reports the dimensions — see "Telling the user where results appeared" in `SKILL.md`:
+
+> Your data is loaded: 84,213 beads × 31,053 genes. The viewer opened in a **new tab** — click it in
+> the notebook to see the spatial coordinates. Do you have an H&E or other pathology image you'd like
+> to overlay?
+
+Everything after this step happens *in that tab*, so this is the one the user most needs to find.
 </method>
 
 <workflows>
@@ -52,4 +63,5 @@ Once the data is loaded and confirmed, **always ask the user whether they have a
 - Ensure ~70k–90k beads for Seeker 3x3 or ~0.8–1.1M beads for Seeker 10x10
 - Ensure there are ~30K gene features
 - The viewer was opened with `sync_to` set to the source H5AD's `LPath`, not just a local path, so later edits (e.g. image alignment) can persist
+- The user was told, in chat, which tab the viewer opened in
 </self_eval_criteria>

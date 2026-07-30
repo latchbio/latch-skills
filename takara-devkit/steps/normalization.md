@@ -17,3 +17,11 @@ Normalize data.
 <self_eval_criteria>
 - Check that counts were first scaled to 10k then log+1 transformed.
 </self_eval_criteria>
+
+<new_tab_notice>
+Normalization opens its own **tab**, which the notebook does not switch to. Name it in chat when you
+report completion — see "Telling the user where results appeared" in `SKILL.md`:
+
+> Counts are scaled to 10k and log+1 transformed. The output is in a **new tab** named
+> **Normalization** — click it in the notebook to see it.
+</new_tab_notice>

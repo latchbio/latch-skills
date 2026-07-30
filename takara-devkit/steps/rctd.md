@@ -91,3 +91,18 @@ block in `wf/rctd_wf.md`: check Latch Data for `<run_name>_RCTD.h5ad` under
 above. Never report that RCTD is still running just because the notebook has no record of it
 finishing.
 </long_running_guidance>
+
+<new_tab_notice>
+Two tabs matter in this step, and the notebook switches to neither.
+
+- The **launch cell and its resume button** (`wf/rctd_wf.md`) sit in their own tab. A resume button in
+  an unopened tab is the same as no button at all, so when you hand off for the long run, tell the
+  user which tab to come back to.
+- The **`first_type` spatial/UMAP views and the `spot_class` distribution** from Step 3 open in
+  another tab once results are merged.
+
+Name both in chat as they appear — see "Telling the user where results appeared" in `SKILL.md`:
+
+> RCTD is running on Latch compute. When it finishes, come back to the **RCTD** tab in this notebook
+> and click **Check my RCTD results** — that button is in that tab, not this chat.
+</new_tab_notice>

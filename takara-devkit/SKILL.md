@@ -132,6 +132,42 @@ those workflow docs specify. Never withhold the `w_workflow` cell waiting for th
 in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
 start the pipeline.
 
+## Telling the user where results appeared
+
+Plots opens a **new tab for each analysis** — reads to counts, the H5AD viewer, QC filtering,
+normalization, feature selection, DEG, and so on. This is platform behavior and cannot be changed
+from this skill. The tab is created, but the notebook **does not switch to it**: the user keeps
+looking at the tab they were already on and sees nothing happen. To them the agent has stalled.
+
+**So every time a step produces a new tab, say so in your chat message.** Two rules make this work:
+
+1. **Put the pointer in chat, not only in the notebook.** A `w_text_output` that says "your results
+   are in a new tab" renders *inside that new tab* — the one the user hasn't clicked. It is invisible
+   to exactly the person who needs it. The chat panel is the only surface that is always in view.
+   Notebook-rendered notices are still useful for the user who *has* clicked through; they are never
+   a substitute for saying it in chat.
+2. **Name the tab and say what is in it**, so the user knows which tab to click and what they are
+   looking for when they get there. If you control the tab or cell name, name it for the step
+   ("Clustering"); if you don't, describe the result concretely enough to recognize.
+
+Template — adapt the specifics, keep the structure:
+
+> Clustering is done. The results opened in a **new tab** named **Clustering** — click
+> that tab in the notebook to see the UMAP and spatial embeddings. The notebook doesn't switch to it
+> automatically.
+
+Say it **every time**, including for steps later in the same session. Users do not reliably
+generalize from the first one, and a missed tab reads as a broken agent rather than a missed click.
+
+In **chat**, never place things with "above", "below", or "in the cell I just ran" — relative to the
+tab the user is looking at, they are somewhere else entirely. Say which tab, then place things within
+it. Inside a notebook-rendered `w_text_output`, "below" is fine and often clearer, because that text
+sits next to the thing it is pointing at. Either way, never imply the view will change on its own.
+
+This applies to `steps/` analyses and to the `wf/` parameter-entry, launch, and resume-button cells
+alike. It matters most for anything the user must **click** — a launch button or a resume button
+sitting in an unopened tab is the same as no button at all.
+
 ## Long-running workflows
 
 Every workflow in `wf/` runs on **Latch compute**, separately from this notebook pod. As soon as

@@ -55,4 +55,16 @@ the work yourself only when the link has not been rendered.
 - The report HTML file was optimized before opening.
 - A clickable link to the optimized report in Latch Data is displayed via w_text_output.
 - The user was prompted to confirm whether to proceed with secondary analysis.
+- The user was told, in chat, which tab the report link was rendered in.
 </self_eval_criteria>
+
+<new_tab_notice>
+The report link is rendered by a cell, so it lands in a **tab** — the pipeline's own tab when the
+**Show my QC report** button produced it, or a new one when you generated the link yourself. Either
+way the notebook does not switch there, and a link the user never sees is the same as no report.
+Name the tab in chat when you tell them the report is ready — see "Telling the user where results
+appeared" in `SKILL.md`:
+
+> Your QC report is ready. The link is in the **Trekker pipeline** tab — click that tab in the
+> notebook, then click **Open the QC report**. Let me know when you've looked it over.
+</new_tab_notice>

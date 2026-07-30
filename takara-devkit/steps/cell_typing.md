@@ -29,4 +29,17 @@ Identify cell types in each cluster.
 </library>
 
 <self_eval_criteria>
+- The user was told, in chat, which tab holds the labeled embeddings, summary table, and plots
 </self_eval_criteria>
+
+<new_tab_notice>
+The labeled embeddings, the summary table of counts and percentages, the dot plot, and the per-type
+violin plots open in a **new tab** that the notebook does not switch to. Name it in chat — see
+"Telling the user where results appeared" in `SKILL.md`:
+
+> All 14 clusters are annotated. The labeled embeddings, summary table, and marker plots are in a
+> **new tab** named **Cell type annotation** — click it in the notebook to review the labels.
+
+Put your written per-cluster reasoning in the chat message itself, not only in that tab, so the user
+can read it without switching away from wherever they are.
+</new_tab_notice>

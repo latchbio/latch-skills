@@ -134,7 +134,7 @@ runtime, browse the run directory with `w_ldata_browser(dir=run_dir)` instead.
 After launching the workflow execution, display this message to the user **in full** — do not
 shorten it or drop the pod shutdown advice:
 
-"RCTD is now running on Latch compute and will take some time to finish (the fitPixels step is the longest; it logs progress and ETA per batch). It runs independently of this notebook, so it is safe to close this tab — and you may also **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor progress in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and click **Check my RCTD results** below — it will confirm the results are ready and tell you what happens next."
+"RCTD is now running on Latch compute and will take some time to finish (the fitPixels step is the longest; it logs progress and ETA per batch). It runs independently of this notebook, so you may **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor progress in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and go to the **RCTD** tab — the **Check my RCTD results** button is in that tab, and clicking it will confirm the results are ready and tell you what happens next."
 
 Because that advice invites the user to shut the pod down, the launch cell must **not** block on
 `await execution.wait()` — an await parks the cell in a permanently-running state, binds no result,
@@ -142,7 +142,10 @@ and does not survive a pod restart.
 
 Never tell the user that you will "resume and load the results" automatically. Nothing in Plots can
 start an agent turn, so that is not true, and it is what leads users to sit waiting and then interrupt
-you. Point them at the resume button instead.
+you. Point them at the resume button instead — and **name the tab it is in**, since this message goes
+to chat while the button renders in the workflow's own tab, which the notebook does not switch to. A
+resume button the user cannot find is the same as no resume button. See "Telling the user where
+results appeared" in `SKILL.md`.
 </long_running_guidance>
 
 <resuming>
