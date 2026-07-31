@@ -11,8 +11,24 @@ To confirm kit type at this step if not already known: ask the user "Was this da
 ### Setup
 
 ```python
+import importlib
 import sys
-sys.path.insert(0, "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib")
+from pathlib import Path
+
+TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+
+# Verify the module is actually there before trusting the path — sys.path.insert of a directory
+# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
+assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+# Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
+# sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
+for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+    del sys.modules[_name]
+while TAKARA_LIB in sys.path:
+    sys.path.remove(TAKARA_LIB)
+sys.path.insert(0, TAKARA_LIB)
+importlib.invalidate_caches()
 
 from takara import remove_background, KitType
 ```
@@ -85,3 +101,13 @@ If adata.n_obs > 200000, display this message to the user after running the back
 
 "Your Background Removal analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
 </long_running_guidance>
+
+<new_tab_notice>
+The bead counts, density histogram, and spatial before/after plots open in a **new tab** that the
+notebook does not switch to. Name it in chat when you report the result — see "Telling the user where
+results appeared" in `SKILL.md`:
+
+> Background removal kept 71,402 of 84,213 beads. The plots opened in a **new tab** named
+> **Background removal** — click it in the notebook to check that the retained beads still trace the
+> tissue.
+</new_tab_notice>

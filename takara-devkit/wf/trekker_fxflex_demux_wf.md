@@ -66,7 +66,7 @@ Once chemistry (and the optional labeling approach) are resolved, proceed to col
     Sample2,A-A02
     ```
   - **If provided, this file takes precedence over `sample_labels`.**
-  - Ask the user to provide it using the attach button in the Agent text interface, or supply its Latch Data path.
+  - Offer both input routes: render a `w_ldata_picker` (`file_type="file"`) for it and tell the user they may instead use the attach button in the Agent text interface. If neither works, ask for its Latch Data path.
 </parameters>
 
 <outputs>
@@ -127,17 +127,93 @@ w = w_workflow(
 )
 execution = w.value
 
-if execution is not None:
-    res = await execution.wait()
-
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        workflow_outputs = list(res.output.values())
+# Do NOT `await execution.wait()` here — the partitioner runs for a long time and the user is told
+# they may shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
 ```
+
+**Resume cell** — generate and run it in the same turn as the launch cell, so the button is on screen
+before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is involved,
+which matters because nothing in Plots can start one. It reads Latch Data rather than kernel state, so
+it also survives a pod restart:
+```python
+from latch.ldata.path import LPath
+from lplots.widgets.button import w_button
+from lplots.widgets.text import w_text_output
+
+out_dir = LPath("latch://...")          # the same output_directory passed in params
+
+resume = w_button(label="Check my demultiplexed FASTQs", key="fxflex_demux_resume")
+
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value:
+    try:
+        fastqs = sorted(p.path for p in out_dir.iterdir() if p.path.endswith(".fastq.gz"))
+    except Exception:
+        fastqs = []
+
+    if fastqs:
+        w_text_output(
+            content=(
+                f"**Partitioning is complete.** Demultiplexed FASTQs in `{out_dir.path}`:\n\n"
+                + "\n".join(f"- `{p}`" for p in fastqs)
+                + "\n\nMessage me and I'll set up one Trekker pipeline run per sample."
+            ),
+            appearance={"message_box": "success"},
+            key="fxflex_demux_resume_ready",
+        )
+    else:
+        w_text_output(
+            content=(
+                f"No demultiplexed FASTQs under `{out_dir.path}` yet, so the run has not finished "
+                "writing its outputs. Check the execution's status in the workflows executions tab; "
+                "if it is still running, click this button again once it reaches SUCCEEDED. If it "
+                "shows FAILED, tell me and I'll look at the logs."
+            ),
+            appearance={"message_box": "warning"},
+            key="fxflex_demux_resume_pending",
+        )
+```
+
+Unlike the Seeker and Trekker pipelines, the step *after* partitioning is not self-contained — it
+means building a fresh set of Trekker parameter widgets per demultiplexed sample. So this button
+confirms the FASTQs are ready and tells the user to message the agent; it cannot finish the step on its
+own. If `iterdir()` is unavailable in the runtime, browse the directory with
+`w_ldata_browser(dir=out_dir)` instead.
 </example>
 
 <long_running_guidance>
-After launching the workflow execution, display this message to the user:
+After launching the workflow execution, display this message to the user **in full** — do not
+shorten it or drop the pod shutdown advice:
 
-"The TrekkerFX_FLEX FASTQ Partitioner is now running on Latch compute and will take some time to finish. It is safe to close this tab while the workflow runs. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, reopen the notebook and the agent will resume from where you left off."
+"The TrekkerFX_FLEX FASTQ Partitioner is now running on Latch compute and will take some time to finish. It runs independently of this notebook, so you may **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor the progress of the workflow in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and go to the **TrekkerFX_FLEX Partitioner** tab — the **Check my demultiplexed FASTQs** button is in that tab, and clicking it will confirm the outputs are ready and tell you what happens next."
+
+Because that advice invites the user to shut the pod down, the launch cell must **not** block on
+`await execution.wait()` — an await parks the cell in a permanently-running state, binds no result,
+and does not survive a pod restart.
+
+Never tell the user that you will "resume from where you left off" automatically. Nothing in Plots can
+start an agent turn, so that is not true, and it is what leads users to sit waiting and then interrupt
+you. Point them at the resume button instead — and **name the tab it is in**, since this message goes
+to chat while the button renders in the workflow's own tab, which the notebook does not switch to. A
+resume button the user cannot find is the same as no resume button. See "Telling the user where
+results appeared" in `SKILL.md`.
 </long_running_guidance>
-</output>
+
+<resuming>
+The launch cell does not wait for the execution, and you will not be running when it finishes. The
+resume button is what tells the user their FASTQs are ready; make sure it is on screen before they
+leave. When they then message you — "continue", "is it done?", or anything else — treat that as a
+resume signal and check Latch Data *before* answering:
+
+- **The notebook is not the source of truth.** The execution runs on Latch compute, outside this pod.
+  Never report "the partitioner is still running" because a cell looks busy, because
+  `workflow_outputs` is undefined, or because you have no record of it completing — none of those are
+  evidence.
+- **Check Latch Data.** Per-sample `_R1.fastq.gz` / `_R2.fastq.gz` pairs under `output_directory` mean
+  the run finished; nothing there means it is still running or failed, and the user should check the
+  workflows executions tab.
+- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
+  are gone and are not needed. The demultiplexed FASTQ paths are all that the Trekker pipeline needs.
+- Once the FASTQs are present, go straight on to `wf/trekker_pipeline_wf.md`, one execution per
+  demultiplexed sample. Do not ask the user to re-confirm that the run finished.
+</resuming>

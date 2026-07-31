@@ -60,23 +60,183 @@ RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a sepa
 If a step requires Takara helper code, import from the skill's `lib/` directory:
 
 ```python
+import importlib
 import sys
-sys.path.insert(0, "<skill-root>/lib")
+from pathlib import Path
+
+TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+
+# Verify the module is actually there before trusting the path — sys.path.insert of a directory
+# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
+assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+# Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
+# sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
+for _name in [m for m in sys.modules if m == "takara" or m.startswith("takara.")]:
+    del sys.modules[_name]
+while TAKARA_LIB in sys.path:
+    sys.path.remove(TAKARA_LIB)
+sys.path.insert(0, TAKARA_LIB)
+importlib.invalidate_caches()
 
 from takara.background_removal import KitType, remove_background
 ```
 
-Resolve `<skill-root>` to the directory where this skill is checked out in the current environment.
+Three rules, all of which exist because getting this wrong produces a confusing
+`ModuleNotFoundError` naming a *submodule* (`No module named 'takara.optimize_html_images'`) even
+though `takara` itself imported fine — the signature of a different `takara` winning the import:
+
+1. **Verify the path before using it.** Never trust a hard-coded lib directory blind.
+2. **Purge `sys.modules` and call `importlib.invalidate_caches()`.** The purge handles a package
+   bound to another path; `invalidate_caches()` handles cached directory listings that otherwise
+   keep a newly-added path's contents invisible.
+3. **Use one path convention everywhere in this skill.** Two paths for the same package means
+   whichever imports first wins for the session.
+
+For imports that are optional — `takara.optimize_html_images`, used only to shrink report images —
+use the non-raising `_load_takara_optimize()` helper in `<takara_lib_import>` at the end of
+`wf/seeker_pipeline_wf.md` instead, so a missing library degrades the output rather than failing the
+cell.
 
 ## Requesting files from the user
 
-Whenever a step needs a file the agent does not already have (e.g. a tissue
-image, a reference, an h5ad data file), ask the user to provide it using the **attach button in
-the Agent text interface**. Do not build a custom file picker widget — that does not work in this
-environment. If the user can't attach (e.g. the file isn't in their local environment), fall back to
-asking them for its Latch Data path directly. An exception to this rule is the entry of parameters
-for the seeker_pipeline_wf and trekker_pipeline_wf - for these pipelines build the parameter
-entry widgets for the customer.
+Whenever a step needs a single file or directory the agent does not already have (e.g. a tissue
+image, a reference, an h5ad data file), give the user **both** ways to provide it:
+
+1. Render a `w_ldata_picker` widget so they can select it from Latch Data — set
+   `file_type="file"` or `file_type="dir"` to match what the step needs (see the
+   `latch-data-access` skill for the full API).
+2. Tell them in the same message that they may instead use the **attach button in the Agent
+   text interface** if they'd rather, or if the file isn't in Latch Data yet.
+
+Either route is acceptable — use whichever the user supplies first. Render the picker
+unconditionally so it is always visible, and always check `.value` for `None` before using it.
+The picker returns an `LPath`: use `picker.value.path` when constructing `LatchFile(...)` or
+`LatchDir(...)`, and the `LPath` itself for `download(...)` / `sync_to`.
+
+```python
+from lplots.widgets.ldata import w_ldata_picker
+
+h5ad_picker = w_ldata_picker(label="H5AD file", file_type="file", key="h5ad_input")
+
+if h5ad_picker.value is not None:
+    h5ad_path = h5ad_picker.value          # LPath
+```
+
+If neither route works, fall back to asking the user for the Latch Data path directly.
+
+This applies to **simple, single file or directory inputs only**. It does not apply to the
+multi-parameter entry for `seeker_pipeline_wf` and `trekker_pipeline_wf` — for those pipelines
+build the full parameter entry widget set **and the launch cell at the same time**, exactly as
+those workflow docs specify. Never withhold the `w_workflow` cell waiting for the user to confirm
+in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
+start the pipeline.
+
+## Telling the user where results appeared
+
+Plots opens a **new tab for each analysis** — reads to counts, the H5AD viewer, QC filtering,
+normalization, feature selection, DEG, and so on. This is platform behavior and cannot be changed
+from this skill. The tab is created, but the notebook **does not switch to it**: the user keeps
+looking at the tab they were already on and sees nothing happen. To them the agent has stalled.
+
+**So every time a step produces a new tab, say so in your chat message.** Two rules make this work:
+
+1. **Put the pointer in chat, not only in the notebook.** A `w_text_output` that says "your results
+   are in a new tab" renders *inside that new tab* — the one the user hasn't clicked. It is invisible
+   to exactly the person who needs it. The chat panel is the only surface that is always in view.
+   Notebook-rendered notices are still useful for the user who *has* clicked through; they are never
+   a substitute for saying it in chat.
+2. **Name the tab and say what is in it**, so the user knows which tab to click and what they are
+   looking for when they get there. If you control the tab or cell name, name it for the step
+   ("Clustering"); if you don't, describe the result concretely enough to recognize.
+
+Template — adapt the specifics, keep the structure:
+
+> Clustering is done. The results opened in a **new tab** named **Clustering** — click
+> that tab in the notebook to see the UMAP and spatial embeddings. The notebook doesn't switch to it
+> automatically.
+
+Say it **every time**, including for steps later in the same session. Users do not reliably
+generalize from the first one, and a missed tab reads as a broken agent rather than a missed click.
+
+In **chat**, never place things with "above", "below", or "in the cell I just ran" — relative to the
+tab the user is looking at, they are somewhere else entirely. Say which tab, then place things within
+it. Inside a notebook-rendered `w_text_output`, "below" is fine and often clearer, because that text
+sits next to the thing it is pointing at. Either way, never imply the view will change on its own.
+
+This applies to `steps/` analyses and to the `wf/` parameter-entry, launch, and resume-button cells
+alike. It matters most for anything the user must **click** — a launch button or a resume button
+sitting in an unopened tab is the same as no button at all.
+
+## Long-running workflows
+
+Every workflow in `wf/` runs on **Latch compute**, separately from this notebook pod. As soon as
+an execution starts, the user must get the `<long_running_guidance>` message from that workflow's
+doc — verbatim and in full. This is not optional; if the doc has no such block, say the same thing
+in your own words.
+
+**Where the message goes depends on how the workflow is launched:**
+
+- `automatic=True` (the workflow fires when you run the cell): the execution starts inside your
+  own turn, so post the message to chat right after running the cell.
+- `automatic=False` — the click-to-launch pattern used by `seeker_pipeline_wf` and
+  `trekker_pipeline_wf`: the user clicks the button *after your turn has ended*. You are not
+  running then and cannot post anything, so the notice must be rendered **by the launch cell
+  itself** with `w_text_output(...)`, inside `if execution is not None:`. Also state it in chat
+  when you present the cells, worded for what is about to happen.
+
+The message must always tell the user that they may **shut down the notebook pod while the
+workflow runs to save on compute costs**, and that doing so will not interrupt the execution.
+They restart the pod, reopen the notebook, and the agent resumes when the workflow finishes.
+
+**Never block on `await execution.wait()` in a cell whose workflow the user has been told they may
+shut the pod down for.** An `await` parks the cell in a permanently-running state, binds no result,
+and does not survive a pod restart — the notebook then looks busy forever and the agent reports
+"still running" long after the workflow has succeeded. End the launch cell at the notice, and put
+completion checking in a separate results cell. This covers every workflow carrying the pod-shutdown
+advice: `seeker_pipeline_wf`, `trekker_pipeline_wf`, `rctd_wf`, `trekker_fxflex_demux_wf`,
+`trekker_qp_demux_wf`. The short workflows without that advice (`trekker_merger_wf`,
+`fastq_concatenator_wf`, `h5ad_merger_wf`, `rctd_reference_builder_wf`) launch with
+`automatic=True` inside your own turn and may keep their in-turn `await` — but do not tell the user
+to shut the pod down during one of those.
+
+**Always render a resume button next to the launch cell.** Nothing in Plots can start an agent turn —
+`w_button`, `w_workflow` and the reactive `.value` mechanism all re-run *cells in the kernel*, and none
+of them posts to the agent chat. So when a long workflow finishes hours later, you are not running and
+cannot act. Without a button already on screen, the user's only recourse is to interrupt you and type
+"continue", which is confusing and undiscoverable. Every workflow carrying the pod-shutdown advice
+therefore gets a `w_button` rendered in the same turn as its launch cell, gated on `if button.value:`,
+that reads Latch Data and either reports the outputs or says the run is not done yet. Where the next
+step is self-contained — the Seeker and Trekker QC report — the button performs it in full, so the
+happy path needs no agent turn at all. Never promise the user that you will "resume from where you
+left off": you cannot, and saying so is what makes them sit and wait.
+
+**Never construct an output path from a guess.** Each workflow doc's `<outputs>` section records the
+directory layout that workflow actually writes, verified against the deployment source in
+`latch_platform/`. Read it before looking for a result file. Two rules follow from it:
+
+- **Anchor at the output directory the user chose** and search downward for the file by suffix
+  (`_Report.html`, `_RCTD.h5ad`, `.fastq.gz`), rather than assembling a full path from the
+  parameters. Run directories are nested more deeply than the parameters suggest — Trekker puts
+  `<analysis_date>_<sample_id>/trekker_<sample_id>/output/` between `output_dir` and the report — and
+  a constructed path that is wrong reports "the pipeline hasn't finished" for a run that succeeded.
+- **Filenames are not always what the parameter names imply.** Trekker's report is
+  `<sample_id>_Trekker_Report.html` for the standard report and `<sample_id>_Report.html` only for the
+  extended one, so match a suffix and prefer the expected variant.
+
+**Determining that a workflow has finished.** The execution runs on Latch compute, outside this pod,
+so the notebook can never tell you its status. Never claim a workflow is still running because a cell
+looks busy, because an output variable is undefined, or because you have no record of it completing.
+Check **Latch Data** for the expected outputs under the run's output directory, and point the user at
+the workflows executions tab for status. After a pod restart, kernel state (`execution`, `res`,
+`workflow_outputs`) is gone and is not needed — widget values persist by `key`, and every downstream
+step derives from Latch Data paths. See the `<resuming>` block in `wf/seeker_pipeline_wf.md` and
+`wf/trekker_pipeline_wf.md`.
+
+This applies only to `wf/` workflow executions. Analyses that run *in* the notebook pod
+(`steps/background_removal.md`, `steps/feature_selection.md`,
+`steps/dimensionality_reduction.md`, `steps/clustering.md`) have the opposite requirement — the
+user must leave the notebook open until they complete.
 
 ## Latch-specific execution
 

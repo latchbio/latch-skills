@@ -24,6 +24,10 @@ There are exactly three valid starting points:
 </pre_analysis_questions>
 
 <pre_analysis_step>
+Applies to every step in every plan below: each analysis opens in its **own tab** in Plots, and the
+notebook does not switch to it. Whenever a step produces a tab, say so in your chat message — name
+the tab and say what is in it — before moving on. See "Telling the user where results appeared" in
+`SKILL.md` for the wording, and each step doc's `<new_tab_notice>` for a step-specific example.
 </pre_analysis_step>
 
 <plan id="primary_analysis" label="Primary Analysis">

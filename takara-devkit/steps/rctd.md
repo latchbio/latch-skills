@@ -41,7 +41,7 @@ For each candidate, capture: organism, tissue/region, disease/condition, develop
 **1d. If no compatible reference is found.** Don't dead-end:
 1. Tell the user what you searched and why nothing matched, then **ask for more detail** (a more specific or a broader tissue term, an alternative organism name, a related model system, does the user have a particular repository that they want to search) and **search again**.
 2. If it still fails, fall back to **user-supplied**: ask the user to either
-   - download a reference to **LData** and **attach it** with the attach button in the Agent interface (a `.h5ad`, or a `.rds` that is a spacexr `Reference` or Seurat object), **or**
+   - download a reference to **LData** and provide it either by selecting it in a `w_ldata_picker` (`file_type="file"`) you render, or with the attach button in the Agent interface (a `.h5ad`, or a `.rds` that is a spacexr `Reference` or Seurat object), **or**
    - paste a **direct download URL** to such a file.
 
 **1e. Convert the chosen reference.** Hand the single chosen reference to the builder (`wf/rctd_reference_builder_wf.md`):
@@ -80,5 +80,29 @@ These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `
 </self_eval_criteria>
 
 <long_running_guidance>
-The RCTD run on Latch compute may take significant time. After launching, use the long-running guidance in the respective workflow doc ("safe to close this tab; reopen when complete and the agent resumes").
+The RCTD run on Latch compute may take significant time. After launching, display the
+`<long_running_guidance>` message from the respective workflow doc in full — including the advice
+that the user may shut down the notebook pod while the workflow runs to save on compute costs,
+then restart the pod and reopen the notebook when it completes.
+
+The launch cell does not wait for the execution, so when the user returns, follow the `<resuming>`
+block in `wf/rctd_wf.md`: check Latch Data for `<run_name>_RCTD.h5ad` under
+`output_directory/<run_name>/` rather than judging from notebook state, then continue at Step 3
+above. Never report that RCTD is still running just because the notebook has no record of it
+finishing.
 </long_running_guidance>
+
+<new_tab_notice>
+Two tabs matter in this step, and the notebook switches to neither.
+
+- The **launch cell and its resume button** (`wf/rctd_wf.md`) sit in their own tab. A resume button in
+  an unopened tab is the same as no button at all, so when you hand off for the long run, tell the
+  user which tab to come back to.
+- The **`first_type` spatial/UMAP views and the `spot_class` distribution** from Step 3 open in
+  another tab once results are merged.
+
+Name both in chat as they appear — see "Telling the user where results appeared" in `SKILL.md`:
+
+> RCTD is running on Latch compute. When it finishes, come back to the **RCTD** tab in this notebook
+> and click **Check my RCTD results** — that button is in that tab, not this chat.
+</new_tab_notice>

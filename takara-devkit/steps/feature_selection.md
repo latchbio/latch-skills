@@ -34,3 +34,12 @@ If adata.n_obs > 200000, display this message to the user after running the feat
 
 "Your Feature Selection analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
 </long_running_guidance>
+
+<new_tab_notice>
+The ranked HVG table opens in a **new tab** that the notebook does not switch to. Name it in chat —
+see "Telling the user where results appeared" in `SKILL.md`:
+
+> 2,000 highly variable genes selected. The ranked list is in a **new tab** named **Feature
+> selection** — click it in the notebook and check that genes you'd expect for this tissue appear
+> near the top.
+</new_tab_notice>
