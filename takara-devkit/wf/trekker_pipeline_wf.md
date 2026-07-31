@@ -318,12 +318,27 @@ from lplots.widgets.text import w_text_output
 
 resume = w_button(label="Show my QC report", key="trekker_resume")
 
-# reading .value makes this cell reactive — the click re-runs it
-if resume.value:
-    # re-derived from the widgets, not from the launch cell's variables
+# Re-derived from the widgets, not from the launch cell's variables. Picker values are LPath or
+# None, and after a pod restart the parameter cell may not have been re-run at all — so never call
+# .path unguarded (same rule as the launch cell).
+try:
     out_root = LPath(w_output_dir.value.path.rstrip("/"))
     sample_v = w_sample_id.value or ""
     date_v = (w_analysis_date.value or "").replace("-", "")      # params use YYYYMMDD
+except (AttributeError, NameError):
+    out_root, sample_v, date_v = None, "", ""
+
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value and out_root is None:
+    w_text_output(
+        content=(
+            "I don't have the output directory for this run. Re-run the parameter cell above, set "
+            "**Output directory**, **Sample ID** and **Analysis date**, then click this button again."
+        ),
+        appearance={"message_box": "warning"},
+        key="trekker_resume_no_params",
+    )
+elif resume.value:
 
     def _reports(root: LPath, depth: int) -> list[LPath]:
         """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""

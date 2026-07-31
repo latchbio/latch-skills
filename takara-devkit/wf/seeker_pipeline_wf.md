@@ -301,12 +301,27 @@ from lplots.widgets.text import w_text_output
 
 resume = w_button(label="Show my QC report", key="seeker_resume")
 
-# reading .value makes this cell reactive — the click re-runs it
-if resume.value:
-    # re-derived from the widgets, not from the launch cell's variables.
-    # The task nests everything under <outdir>/<execution_name>/ — see <outputs>.
+# Re-derived from the widgets, not from the launch cell's variables. Picker values are LPath or
+# None, and after a pod restart the parameter cell may not have been re-run at all — so never call
+# .path unguarded (same rule as the launch cell).
+# The task nests everything under <outdir>/<execution_name>/ — see <outputs>.
+try:
     run_dir = LPath(f"{w_outdir.value.path.rstrip('/')}/{w_execution_name.value or ''}")
     sample_v = w_sample.value or ""
+except (AttributeError, NameError):
+    run_dir, sample_v = None, ""
+
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value and run_dir is None:
+    w_text_output(
+        content=(
+            "I don't have the output directory for this run. Re-run the parameter cell above, set "
+            "**Output directory** and **Execution name**, then click this button again."
+        ),
+        appearance={"message_box": "warning"},
+        key="seeker_resume_no_params",
+    )
+elif resume.value:
 
     def _reports(root: LPath, depth: int) -> list[LPath]:
         """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""

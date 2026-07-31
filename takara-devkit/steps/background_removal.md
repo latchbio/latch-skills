@@ -56,6 +56,7 @@ adata_filtered = result.adata_filtered
 | `n` | 100 | Step 3 neighborhood size (µm) |
 | `p` | 5 | Min beads per m×m region |
 | `q` | 10 | Min beads per n×n region |
+| `to_csr` | True | Return `adata_filtered.X` (and any CSC layer) as CSR — faster for every downstream per-bead step |
 
 ### Inspecting Results
 
@@ -74,6 +75,10 @@ coords = adata.obsm["spatial"]
 plt.scatter(coords[~result.step3_mask, 0], coords[~result.step3_mask, 1], s=1, c="gray", alpha=0.3)
 plt.scatter(coords[result.step3_mask, 0], coords[result.step3_mask, 1], s=1, c="red")
 ```
+
+`result.adata_step1` and `result.adata_step2` are zero-copy **views** onto `adata` — read and plot
+them freely, but do not mutate them (writing to a view silently materializes a full copy). Only
+`result.adata_filtered` is an independent object.
 
 ### Choosing min_log10_umi
 
@@ -97,9 +102,15 @@ log10_umi.hist(bins=100)
 </self_eval_criteria>
 
 <long_running_guidance>
-If adata.n_obs > 200000, display this message to the user after running the background removal cell:
+Background removal is **not** a long-running step — it completes in seconds even at ~900,000 beads,
+because all three masks are computed from bead coordinates and UMI counts and the counts matrix is
+subset exactly once. Do **not** show the "leave this notebook open" message for this step; save it for
+feature selection, dimensionality reduction, and clustering, which really are slow at this scale.
 
-"Your Background Removal analysis is running on this pod notebook and may take some time to complete. Please leave this notebook open until the analysis is completed."
+The one exception is a `RuntimeWarning` about **backed mode**. If that fires, the H5AD was loaded with
+`backed='r'` and the filtered subset has to be read off disk with `.to_memory()`, which can take a
+minute on a large file. Tell the user it is loading from disk, and fix the load cell to use
+`ad.read_h5ad(local_h5ad)` without `backed=` (see `steps/data_loading.md`).
 </long_running_guidance>
 
 <new_tab_notice>

@@ -86,7 +86,7 @@ from latch.ldata.path import LPath
 from lplots.widgets.button import w_button
 from lplots.widgets.text import w_text_output
 
-run_dir = LPath(f"{output_directory_path.rstrip('/')}/{run_name}")   # same values passed in params
+run_dir = LPath("latch://.../<run_name>")   # output_directory/<run_name> — the same values passed in params
 
 resume = w_button(label="Check my RCTD results", key="rctd_resume")
 

@@ -30,7 +30,11 @@ h5ad_path = LPath("latch://.../results/sample.h5ad")
 local_h5ad = Path("/tmp") / h5ad_path.name()
 h5ad_path.download(local_h5ad, cache=True)
 
-adata = ad.read_h5ad(local_h5ad, backed='r')
+# Load in memory, not backed='r'. AnnData.copy() raises ValueError on a backed object
+# ("To copy an AnnData object in backed mode, pass a filename"), and a view of a backed
+# object is itself backed — so every downstream step that subsets beads needs the
+# in-memory handle. The pod has far more RAM than the file needs.
+adata = ad.read_h5ad(local_h5ad)
 
 viewer = w_h5(
     label="Review Takara H5AD",
@@ -43,14 +47,8 @@ Once the data is loaded and confirmed, **always ask the user whether they have a
 
 ### Step 1c — Point the user at the viewer's tab
 
-The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat
-message that reports the dimensions — see "Telling the user where results appeared" in `SKILL.md`:
-
-> Your data is loaded: 84,213 beads × 31,053 genes. The viewer opened in a **new tab** — click it in
-> the notebook to see the spatial coordinates. Do you have an H&E or other pathology image you'd like
-> to overlay?
-
-Everything after this step happens *in that tab*, so this is the one the user most needs to find.
+Name the tab the viewer opened in, in the same chat message that reports the dimensions — see
+`<new_tab_notice>` below for the wording.
 </method>
 
 <workflows>
@@ -62,6 +60,20 @@ Everything after this step happens *in that tab*, so this is the one the user mo
 <self_eval_criteria>
 - Ensure ~70k–90k beads for Seeker 3x3 or ~0.8–1.1M beads for Seeker 10x10
 - Ensure there are ~30K gene features
+- The AnnData handed to downstream steps is in memory (`adata.isbacked is False`) — a backed object cannot be `.copy()`'d and will break bead filtering
 - The viewer was opened with `sync_to` set to the source H5AD's `LPath`, not just a local path, so later edits (e.g. image alignment) can persist
 - The user was told, in chat, which tab the viewer opened in
 </self_eval_criteria>
+
+<new_tab_notice>
+The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat
+message that reports the dimensions — see "Telling the user where results appeared" in `SKILL.md`:
+
+> Your data is loaded: 84,213 beads × 31,053 genes. The viewer opened in a **new tab** — click it in
+> the notebook to see the spatial coordinates. Do you have an H&E or other pathology image you'd like
+> to overlay?
+
+Everything after this step happens *in that tab*, so this is the one the user most needs to find.
+Keep the H&E question in the same message — `main.md` requires that offer every time spatial data is
+loaded.
+</new_tab_notice>
