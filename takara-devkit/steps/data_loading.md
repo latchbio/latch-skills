@@ -30,10 +30,15 @@ h5ad_path = LPath("latch://.../results/sample.h5ad")
 local_h5ad = Path("/tmp") / h5ad_path.name()
 h5ad_path.download(local_h5ad, cache=True)
 
-# Load in memory, not backed='r'. AnnData.copy() raises ValueError on a backed object
-# ("To copy an AnnData object in backed mode, pass a filename"), and a view of a backed
-# object is itself backed — so every downstream step that subsets beads needs the
-# in-memory handle. The pod has far more RAM than the file needs.
+# Load in memory — NOT backed='r'. Confirmed with Latch engineering: sync_to writes by
+# serializing the Python AnnData object and uploading it to the LPath, and backed='r' is
+# read-only so it cannot be the write channel. A backed handle here silently breaks the
+# image-alignment persistence in steps/image_overlay.md. Hand the viewer the same object
+# that analysis modifies.
+#
+# This does mean the counts matrix is resident for the whole session. On an 8–32 GB pod a
+# 3–4B read Seeker dataset is a real fraction of that, so check before loading rather than
+# discovering it as a stall (see <memory_check> below).
 adata = ad.read_h5ad(local_h5ad)
 
 viewer = w_h5(
@@ -60,10 +65,30 @@ Name the tab the viewer opened in, in the same chat message that reports the dim
 <self_eval_criteria>
 - Ensure ~70k–90k beads for Seeker 3x3 or ~0.8–1.1M beads for Seeker 10x10
 - Ensure there are ~30K gene features
-- The AnnData handed to downstream steps is in memory (`adata.isbacked is False`) — a backed object cannot be `.copy()`'d and will break bead filtering
+- The AnnData handed to downstream steps is in memory (`adata.isbacked is False`) — `sync_to` cannot write back from a backed handle, so a backed object breaks image-alignment persistence
+- The available-RAM check ran and the H5AD comfortably fits (see `<memory_check>`)
 - The viewer was opened with `sync_to` set to the source H5AD's `LPath`, not just a local path, so later edits (e.g. image alignment) can persist
 - The user was told, in chat, which tab the viewer opened in
 </self_eval_criteria>
+
+<memory_check>
+Run this **before** `read_h5ad`. The pod has 8–32 GB, and the in-memory object plus the copies
+background removal and normalization make will need several times the file size. A pod that runs out
+of memory does not crash — it pages, and the notebook simply stops making progress with no traceback.
+
+```python
+import psutil
+
+size_gb = local_h5ad.stat().st_size / 1e9
+avail_gb = psutil.virtual_memory().available / 1e9
+print(f"H5AD {size_gb:.2f} GB | available RAM {avail_gb:.1f} GB")
+if avail_gb < 4 * size_gb:
+    print("WARNING: tight. Expect paging in background removal / normalization.")
+```
+
+If it warns, tell the user before loading and offer a larger pod rather than starting a run that will
+stall hours later. Compressed H5ADs expand well beyond their on-disk size, so treat 4× as a floor.
+</memory_check>
 
 <new_tab_notice>
 The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat

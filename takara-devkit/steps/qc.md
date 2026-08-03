@@ -3,6 +3,19 @@ Identify and apply filtering thresholds to counts.
 </goal>
 
 <method>
+### Which object this step operates on
+
+Rebind `adata` before you start, so every reference below is unambiguous:
+
+- **Seeker** — QC runs on the background-removed object, not the one loaded in step 1:
+  `adata = result.adata_filtered` (from `steps/background_removal.md`).
+- **Trekker** — background removal is skipped, so QC runs on the `adata` from
+  `steps/data_loading.md` as-is. Nothing to rebind.
+
+Getting this wrong on Seeker data is silent, not an error: thresholds get chosen from histograms
+that still include the off-tissue background beads background removal just discarded, which drags
+the low end of every distribution down and puts the valley in the wrong place.
+
 For each of "genes per bead", "mitochondrial percentage" and "total UMIs" do the following:
 
 1/ Make histograms of this metric. Set the x-axis range explicitly to the actual data range (min to max of the metric values computed from `adata.obs`) — do not rely on library defaults or hardcoded limits. For total UMIs use `xlim=(0, adata.obs['total_counts'].max())`.
@@ -31,6 +44,7 @@ Always use text input widgets for precise viewing and manipulation of threshold 
 </library>
 
 <self_eval_criteria>
+- For Seeker, the histograms were computed on the background-removed object (`result.adata_filtered`), not the H5AD loaded in step 1 — bead count should match the background-removal result, not the original
 - Seek help from the user to identify a cutoff least disruptive to their morphology
 - Prioritize spatial continuity and preservation of 'important morphology' over cutoffs selected from histogram data alone.
 
