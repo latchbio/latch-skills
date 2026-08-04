@@ -30,18 +30,33 @@ while TAKARA_LIB in sys.path:
 sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
-from takara import remove_background, KitType, monitor, tail
+import hashlib
 import takara
+from takara import remove_background, KitType, monitor, tail
+from lplots.widgets.text import w_text_output
 
 # Which code is actually running. The deployed copy under technology_docs/takara/lib is an
 # artifact *copied* from the repo, not a checkout of it, so the branch you launched from
 # does not tell you what is on the pod — this does. A stale copy has already cost one full
 # investigation: two runs were compared as "old vs new" while both were the old code.
-print(takara.describe())
+#
+# The hash is recomputed from disk rather than read off takara.__build__, so this still
+# reports something useful when the deployed copy predates describe() entirely.
+_pkg = Path(takara.__file__).parent
+_h = hashlib.sha256()
+for _p in sorted(_pkg.glob("*.py")):
+    _h.update(_p.name.encode())
+    _h.update(_p.read_bytes())
+
+_identity = getattr(takara, "describe", lambda: f"takara <pre-0.3.0> path={_pkg}")()
+w_text_output(
+    content=f"{_identity}\nbuild recomputed from disk = {_h.hexdigest()[:12]}",
+    appearance={"message_box": "info"},
+)
 ```
 
-Report that line to the user before any timing run. To check it against your working copy,
-this reproduces the same id from the repo without importing anything:
+Report that to the user before any timing run. To check it against your working copy, this
+reproduces the same id from the repo without importing anything:
 
 ```bash
 python3 -c "import hashlib,pathlib; h=hashlib.sha256()
