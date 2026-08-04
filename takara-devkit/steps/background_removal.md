@@ -30,26 +30,51 @@ while TAKARA_LIB in sys.path:
 sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
-from takara import remove_background, KitType
+from takara import remove_background, KitType, monitor, tail
 ```
 
 ### Usage
 
-```python
-result = remove_background(
-    adata,
-    kit_type=KitType.TEN_BY_TEN,  # or KitType.THREE_BY_THREE
-    min_log10_umi=1.4,  # adjust based on UMI histogram
-    progress=print,  # timestamped line per step; drop it once the run is known-good
-)
+Always run this inside `monitor`. The portal shows no progress for a running cell, so an
+eight-second step and a hung one look identical; `monitor` is what tells them apart.
 
-# Final filtered data
+Open a logs widget **in the same cell, before** the monitored block — per
+`latch-plots-ui/SKILL.md` this is the supported way to show progress in the portal, and bare
+`print()` is explicitly not:
+
+```python
+from lplots.widgets.logs import w_logs_display
+from lplots import submit_widget_state
+
+w_logs_display(label="Background removal progress")
+submit_widget_state()
+
+with monitor("background removal") as mon:
+    result = remove_background(
+        adata,
+        kit_type=KitType.TEN_BY_TEN,  # or KitType.THREE_BY_THREE
+        min_log10_umi=1.4,  # adjust based on UMI histogram
+        progress=mon.phase,
+    )
+
 adata_filtered = result.adata_filtered
 ```
 
-`progress` exists because the failure mode this step has actually hit in production is a
-**silent** stall — no traceback, no output, just a cell that never returns. Always pass it
-on a first run against a new dataset, so a stall shows you which step it stalled in.
+`monitor` emits a line per step plus a heartbeat every 15 s carrying resident memory,
+available RAM, CPU, swap rate and network rate, and closes with a per-phase table and a
+verdict. It writes to the widget stream *and* to `/tmp/takara_progress.log`.
+
+**Rely on the log file.** It is fsynced per line and outlives the kernel, so a run aborted
+after five hours still says exactly where it was and what the pod was doing. Read it from a
+fresh cell — including after an abort:
+
+```python
+from takara import tail
+w_text_output(content=tail(120))
+```
+
+`/tmp` is pod-local and is lost when the pod recycles. To keep a run's log, pass a path on a
+mounted volume: `monitor("background removal", path="/root/bg_removal.log")`.
 
 `remove_background` does **not** modify the `adata` you pass it. This is deliberate: that
 object is bound to the `w_h5` viewer with `sync_to`, and per Latch engineering `sync_to`
@@ -62,10 +87,26 @@ versions wrote `obs['log10_nCount_RNA']` back to the source; that column is now 
 `adata.obsm` on the viewer-bound object, consider whether it needs to persist. If it does,
 do it deliberately and call `h5_refresh` — don't let it happen as a side effect.
 
-### If this step runs long, capture the environment first
+### If this step runs long, read the monitor log
 
-Before assuming the algorithm is at fault, run this — it distinguishes a compute problem
-from a memory problem in seconds, and the answer determines the fix:
+Measured at the production shape — 741,256 beads × 38,086 genes, CSC — the whole function
+takes **under one second**, and it scales linearly in non-zeros. If this step is taking
+minutes, the time is not in the filtering, and guessing at the algorithm will waste it.
+
+`monitor` writes a verdict when the run ends, and the heartbeat lines tell you the same
+thing while it is still going. Read the slowest phase:
+
+| heartbeat shows | what is actually happening |
+|---|---|
+| `cpu` high, `rss` steady | genuinely computing |
+| `cpu` low, `swap` non-zero | the pod is out of RAM and thrashing — fix pod size or the load path |
+| `cpu` low, `net_tx` high | a `sync_to` H5AD serialize-and-upload, not computation |
+| `cpu` low, everything flat | blocked on I/O or a remote call |
+
+Only the first of those is a reason to look at this function.
+
+To capture the environment as well — this distinguishes a compute problem from a memory
+problem in seconds, and the answer determines the fix:
 
 ```python
 import psutil, anndata, scipy.sparse as sp
@@ -98,7 +139,7 @@ whole H5AD. Check the pod's network activity before assuming the filtering is at
 | `n` | 100 | Step 3 neighborhood size (µm) |
 | `p` | 5 | Min beads per m×m region |
 | `q` | 10 | Min beads per n×n region |
-| `to_csr` | False | Convert `adata_filtered.X` (and any CSC layer) to CSR. Faster for downstream per-bead steps, but costs one extra copy of the matrix — leave it off and let normalization convert after the matrix has shrunk |
+| `to_csr` | True | Convert `adata_filtered.X` (and any CSC layer) to CSR. This is the only place in the pipeline that converts — leave it on. Measured at 741,256 × 38,086 / 100M nnz: +1.1 s, and no increase in peak memory |
 | `progress` | None | Callable taking a string, e.g. `print`. Emits a timestamped line per step |
 
 ### Inspecting Results
@@ -113,10 +154,19 @@ print(f"After step 3: {result.step3_mask.sum()}")
 # Plot density histogram to verify p/q thresholds
 result.step2_density["count"].hist(bins=30, density=True)
 
-# Spatial visualization
+# Spatial visualization — downsample first. At 741K beads an alpha-blended scatter of every
+# point takes minutes in matplotlib and can be hundreds of MB if rendered to an interactive
+# plot, which reads in the portal as a cell that never finishes. 100K points is plenty to
+# judge morphology.
 coords = adata.obsm["spatial"]
-plt.scatter(coords[~result.step3_mask, 0], coords[~result.step3_mask, 1], s=1, c="gray", alpha=0.3)
-plt.scatter(coords[result.step3_mask, 0], coords[result.step3_mask, 1], s=1, c="red")
+keep, drop = result.step3_mask, ~result.step3_mask
+if adata.n_obs > 100_000:
+    sel = np.zeros(adata.n_obs, dtype=bool)
+    sel[np.random.default_rng(0).choice(adata.n_obs, 100_000, replace=False)] = True
+    keep, drop = keep & sel, drop & sel
+
+plt.scatter(coords[drop, 0], coords[drop, 1], s=1, c="gray", alpha=0.3)
+plt.scatter(coords[keep, 0], coords[keep, 1], s=1, c="red")
 ```
 
 `result.adata_step1` and `result.adata_step2` are zero-copy **views** onto `adata` — read and plot
@@ -145,25 +195,26 @@ log10_umi.hist(bins=100)
 </self_eval_criteria>
 
 <long_running_guidance>
-Background removal should complete in **seconds**, not hours — all three masks come from bead
-coordinates and UMI counts, and the counts matrix is subset exactly once. Measured at 150,000 beads
-× 4,000 genes (57M non-zeros): 0.5 s and 338 MB of peak RSS above baseline. Do **not** show the
-"leave this notebook open" message for this step; save it for feature selection, dimensionality
-reduction, and clustering, which really are slow at this scale.
+Background removal completes in **seconds**, not hours — all three masks come from bead coordinates
+and UMI counts, and the counts matrix is subset exactly once. Measured at the largest production
+shape seen so far, 741,256 beads × 38,086 genes stored CSC: **0.83 s**, linear in non-zeros. Do
+**not** show the "leave this notebook open" message for this step; save it for feature selection,
+dimensionality reduction, and clustering, which really are slow at this scale.
 
-That timing holds **only while the matrix fits comfortably in RAM and nothing is uploading**. This
-step has stalled for hours in production on a large dataset. The filtering itself was measured and
-ruled out both times; the causes to check, in order, are outside it. If it runs longer than a minute:
+That timing holds **only while the matrix fits in RAM and nothing is uploading**. This step has
+stalled for hours in production three times. Each time the filtering itself was measured and ruled
+out — including once *after* it had already been made 300× faster, which changed the wall clock not
+at all. Do not optimize this function again without a measurement showing it is the cost.
 
-1. Do not kill it immediately — the `progress` output tells you which step it is in. If the last line
-   printed is a *step* line, the masks are done and it is stuck materializing or uploading, not
-   filtering.
-2. Run the environment capture block under `### If this step runs long` above.
-3. If available RAM is tight → pod size / load path (`steps/data_loading.md`).
-4. If RAM is fine → suspect `sync_to` upload traffic from a write to the viewer-bound `adata`.
+If it runs longer than a minute:
+
+1. Do not kill it — `monitor` is already recording. The heartbeat names the phase it is in and
+   whether the pod is computing, swapping, or uploading.
+2. Read the table under `### If this step runs long` above and act on the *verdict*, not on a guess.
+3. If you did kill it, the log outlived the kernel: `from takara import tail; print(tail(120))`.
 
 Treat a long run here as a bug to investigate, not a wait. Only tell the user to leave the notebook
-open once you have confirmed which of the two causes it is.
+open once the heartbeat shows the pod is genuinely CPU-bound.
 </long_running_guidance>
 
 <new_tab_notice>

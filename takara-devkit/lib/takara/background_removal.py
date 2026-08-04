@@ -9,6 +9,12 @@ subset.
 Measured against the pre-optimization implementation at 150,000 beads x 4,000 genes
 (57M non-zeros), same in-memory input, separate processes: 236.4 s -> 0.5 s wall clock,
 and 1118 MB -> 338 MB of peak RSS above baseline.
+
+At the largest production shape seen so far -- 741,256 beads x 38,086 genes, CSC, 100M
+non-zeros, keeping 739K beads -- the whole call takes **0.83 s**, and cost is linear in
+non-zeros (CSC row-subset: 0.23 / 0.46 / 0.96 s at 50M / 100M / 200M). If this step is
+taking minutes, the time is not in here; see ``steps/background_removal.md`` and use
+``takara.monitor`` to find out where it actually is.
 """
 
 import logging
@@ -185,7 +191,7 @@ def remove_background(
     n: int = 100,
     p: int = 5,
     q: int = 10,
-    to_csr: bool = False,
+    to_csr: bool = True,
     progress: Callable[[str], None] | None = None,
 ) -> BackgroundRemovalResult:
     """Remove off-tissue background beads from Seeker spatial data.
@@ -204,10 +210,13 @@ def remove_background(
     ``adata`` alive for as long as the result is referenced, and writing to them
     silently materializes a full copy. Read them, don't mutate them.
 
-    ``to_csr`` converts the filtered ``.X`` (and any CSC layer) to CSR, which is faster
-    for every downstream per-bead operation. It defaults to ``False`` so that the
-    conversion happens after normalization has shrunk the matrix rather than at peak
-    memory here.
+    ``to_csr`` converts the filtered ``.X`` (and any CSC layer) to CSR. It defaults to
+    ``True`` because this is the only place in the pipeline that converts: nothing
+    downstream does, so leaving it off means every later step runs on CSC and scanpy
+    converts implicitly — potentially once per call. Doing it here, once, on the
+    already-filtered subset is the cheap version. Measured at 741,256 x 38,086 with 100M
+    non-zeros: 0.81 s -> 1.90 s, and peak RSS *unchanged* (2,777 MB -> 2,743 MB), because
+    the CSC is detached before ``tocsr()`` runs.
 
     Pass ``progress`` (e.g. ``print``, or a ``w_text_output`` updater) to follow a long
     run; otherwise progress goes to this module's logger at INFO. Enable it with
