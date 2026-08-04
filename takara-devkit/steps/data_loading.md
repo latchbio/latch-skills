@@ -41,6 +41,13 @@ h5ad_path.download(local_h5ad, cache=True)
 # discovering it as a stall (see <memory_check> below).
 adata = ad.read_h5ad(local_h5ad)
 
+# Background removal and QC both read obs['total_counts'], and nothing else in the pipeline
+# computes it — some H5ADs arrive with it, some do not. Fill it in here rather than letting
+# background removal fail on a bare pandas KeyError several steps later.
+if "total_counts" not in adata.obs:
+    import numpy as np
+    adata.obs["total_counts"] = np.asarray(adata.X.sum(axis=1)).ravel()
+
 viewer = w_h5(
     label="Review Takara H5AD",
     ann_data=adata,
@@ -67,6 +74,7 @@ Name the tab the viewer opened in, in the same chat message that reports the dim
 - Ensure there are ~30K gene features
 - The AnnData handed to downstream steps is in memory (`adata.isbacked is False`) — `sync_to` cannot write back from a backed handle, so a backed object breaks image-alignment persistence
 - The available-RAM check ran and the H5AD comfortably fits (see `<memory_check>`)
+- `adata.obs['total_counts']` exists before any downstream step runs — background removal and QC both require it and neither computes it
 - The viewer was opened with `sync_to` set to the source H5AD's `LPath`, not just a local path, so later edits (e.g. image alignment) can persist
 - The user was told, in chat, which tab the viewer opened in
 </self_eval_criteria>

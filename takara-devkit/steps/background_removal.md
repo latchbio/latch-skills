@@ -31,7 +31,26 @@ sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
 from takara import remove_background, KitType, monitor, tail
+import takara
+
+# Which code is actually running. The deployed copy under technology_docs/takara/lib is an
+# artifact *copied* from the repo, not a checkout of it, so the branch you launched from
+# does not tell you what is on the pod — this does. A stale copy has already cost one full
+# investigation: two runs were compared as "old vs new" while both were the old code.
+print(takara.describe())
 ```
+
+Report that line to the user before any timing run. To check it against your working copy,
+this reproduces the same id from the repo without importing anything:
+
+```bash
+python3 -c "import hashlib,pathlib; h=hashlib.sha256()
+[ (h.update(p.name.encode()), h.update(p.read_bytes())) for p in sorted(pathlib.Path('takara-devkit/lib/takara').glob('*.py')) ]
+print(h.hexdigest()[:12])"
+```
+
+If the two ids differ, the pod is running different code from the one you edited — stop and
+re-register the skill. Any measurement taken before they match is about the wrong program.
 
 ### Usage
 

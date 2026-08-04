@@ -304,6 +304,15 @@ class RunMonitor:
             self._proc.cpu_percent(interval=None)  # prime the CPU delta
         self._base = self._sample()
         self._last = self._base
+        # Stamp the running build into every log. A timing run against a stale deployed
+        # copy is worse than no run at all, because it looks like evidence. Imported
+        # lazily: takara/__init__ imports this module.
+        try:
+            from takara import describe
+
+            self._write("BUILD", describe())
+        except Exception:
+            self._write("BUILD", "(takara build id unavailable)")
         self._write("START", f"log={self.path}  |  {self._rates(self._base)}")
         self._thread = threading.Thread(
             target=self._run, name=f"takara-monitor:{self.label}", daemon=True
