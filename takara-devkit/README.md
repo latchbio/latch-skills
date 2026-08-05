@@ -51,16 +51,36 @@ Optional file listing additional pip packages to install at pod startup. New pac
 
 ## How to Test
 
-If your changes are on the `main` branch of your devkit, they will be pulled in automatically for new pods. However, if you want to test changes before merging to `main`, follow these steps:
+If your changes are on the `main` branch, they will be pulled in automatically for new pods. However, if you want to test changes before merging to `main`, follow these steps:
 
-1. Create a branch in your devkit with your proposed changes
+1. Create a branch with your proposed changes
 2. [SSH into your pod](https://wiki.latch.bio/plots/developer/ssh)
-3. Navigate to your tech docs directory and checkout your branch:
+3. Navigate to the latch-skills checkout and check out your branch:
    ```bash
-   cd /opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara
+   cd /opt/latch/plots-faas/.claude/skills/takara-devkit
    git fetch origin
    git checkout <your_branch_name>
    ```
-4. Test your changes
+4. **Confirm the pod is running your code before measuring anything:**
+   ```bash
+   python3 -c "import hashlib,pathlib; h=hashlib.sha256()
+   [ (h.update(p.name.encode()), h.update(p.read_bytes())) for p in sorted(pathlib.Path('lib/takara').glob('*.py')) ]
+   print(h.hexdigest()[:12])"
+   ```
+   Run the same command in your local checkout. The two ids must match. In a notebook,
+   `takara.describe()` reports the id of whatever actually got imported.
+5. Test your changes
 
 **Note:** The branch will be reset to `main` on pod restart. Testing changes to `requirements.txt` on branches is not currently supported.
+
+### Do not test against `technology_docs/`
+
+`/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/` is a **frozen
+snapshot** of this devkit from before it moved into the latch-skills monorepo, retained only so
+older notebooks that hard-code that path keep importing. It is not a checkout of this repo, `git
+fetch` there does not reach this repo, and nothing merged since the move has ever appeared in it.
+
+It is easy to mistake for live: `import takara` succeeds from it, and the copy job re-runs on pod
+start so its files carry current mtimes on months-old content. Benchmarking against it produced two
+"old vs new" numbers for a 3-billion-read run that were both the old code. Step 4 above is what
+catches this.

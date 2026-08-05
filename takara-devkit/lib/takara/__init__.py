@@ -16,9 +16,12 @@ def _build_id() -> str:
     """Short content hash of every source file in this package.
 
     ``__version__`` is hand-maintained and can be forgotten on a bump; this cannot lie.
-    The deployed copy on a Latch pod lives at ``.../technology_docs/takara/lib/takara``,
-    which is an artifact *copied* from the repo rather than a checkout of it — so "which
-    branch did I launch from" does not answer "which code is actually running". This does.
+
+    It exists because a pod can import a *different* ``takara`` than the one you edited and
+    give no sign of it. ``.../technology_docs/takara/lib/takara`` holds a frozen snapshot of
+    this package from before the move into the latch-skills monorepo, kept for backward
+    compatibility; it imports cleanly, and it is re-copied on pod start so its mtimes look
+    current. Neither the path nor the file dates tell you what is running. This does.
     """
     h = hashlib.sha256()
     for p in sorted(Path(__file__).parent.glob("*.py")):

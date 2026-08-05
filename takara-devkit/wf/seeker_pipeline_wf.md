@@ -468,12 +468,17 @@ from pathlib import Path
 
 # Checked first, in order. If the skill is deployed somewhere else, add that path here.
 _TAKARA_HINTS = (
-    "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib",
+    "/opt/latch/plots-faas/.claude/skills/takara-devkit/lib",
+    "/opt/latch/plots-faas/.claude/skills/latch-skills/takara-devkit/lib",
 )
 # Searched only if no hint matches. Most specific first — an rglob over a large tree is slow.
+# `agent_config/context/technology_docs` is deliberately absent: it holds a frozen pre-monorepo
+# snapshot of this devkit (see <legacy_technology_docs_path> in SKILL.md) that imports cleanly
+# and runs months-old code. It has no optimize_html_images.py, so it would miss anyway — but do
+# not add it back as a convenience for other imports.
 _TAKARA_SEARCH_ROOTS = (
-    "/opt/latch/plots-faas/runtime/mount",
-    "/opt/latch",
+    "/opt/latch/plots-faas/.claude/skills",
+    "/opt/latch/plots-faas",
     "/root",
 )
 

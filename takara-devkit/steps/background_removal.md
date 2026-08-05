@@ -11,15 +11,30 @@ To confirm kit type at this step if not already known: ask the user "Was this da
 ### Setup
 
 ```python
+import hashlib
 import importlib
 import sys
 from pathlib import Path
 
-TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+# Resolve the skill's own lib/ under `.claude/skills/`. Do not hard-code
+# `technology_docs/takara/lib` here — that is a frozen pre-monorepo snapshot that imports
+# cleanly and runs months-old code (see <legacy_technology_docs_path> in SKILL.md).
+_SKILLS_ROOT = Path("/opt/latch/plots-faas/.claude/skills")
 
-# Verify the module is actually there before trusting the path — sys.path.insert of a directory
-# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
-assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+def _resolve_takara_lib() -> Path:
+    for cand in (
+        _SKILLS_ROOT / "takara-devkit" / "lib",
+        _SKILLS_ROOT / "latch-skills" / "takara-devkit" / "lib",
+    ):
+        if (cand / "takara" / "background_removal.py").is_file():
+            return cand
+    for hit in _SKILLS_ROOT.rglob("takara/background_removal.py"):
+        return hit.parent.parent
+    raise RuntimeError(f"takara lib not found under {_SKILLS_ROOT}")
+
+
+TAKARA_LIB = str(_resolve_takara_lib())
 
 # Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
 # sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
@@ -30,18 +45,13 @@ while TAKARA_LIB in sys.path:
 sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
-import hashlib
 import takara
 from takara import remove_background, KitType, monitor, tail
 from lplots.widgets.text import w_text_output
 
-# Which code is actually running. The deployed copy under technology_docs/takara/lib is an
-# artifact *copied* from the repo, not a checkout of it, so the branch you launched from
-# does not tell you what is on the pod — this does. A stale copy has already cost one full
-# investigation: two runs were compared as "old vs new" while both were the old code.
-#
-# The hash is recomputed from disk rather than read off takara.__build__, so this still
-# reports something useful when the deployed copy predates describe() entirely.
+# Which code is actually running, reported before any measurement is taken. The hash is
+# recomputed from disk rather than read off takara.__build__, so this still says something
+# useful if the import resolved somewhere that predates describe() entirely.
 _pkg = Path(takara.__file__).parent
 _h = hashlib.sha256()
 for _p in sorted(_pkg.glob("*.py")):
@@ -55,8 +65,12 @@ w_text_output(
 )
 ```
 
-Report that to the user before any timing run. To check it against your working copy, this
-reproduces the same id from the repo without importing anything:
+Report that to the user before any timing run, and **check two things in it**:
+
+- **The path** is under `.claude/skills/`. If it reads `technology_docs/takara`, the resolver was
+  bypassed and this is the frozen snapshot — stop, no measurement from it means anything.
+- **The build id** matches your working copy. This reproduces the same id from the repo without
+  importing anything:
 
 ```bash
 python3 -c "import hashlib,pathlib; h=hashlib.sha256()
@@ -64,8 +78,9 @@ python3 -c "import hashlib,pathlib; h=hashlib.sha256()
 print(h.hexdigest()[:12])"
 ```
 
-If the two ids differ, the pod is running different code from the one you edited — stop and
-re-register the skill. Any measurement taken before they match is about the wrong program.
+If the ids differ, the pod has a different revision of the skill from the one you edited — the
+checkout has not picked up your branch yet. Any measurement taken before they match is about the
+wrong program.
 
 ### Usage
 

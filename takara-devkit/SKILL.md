@@ -60,15 +60,35 @@ RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a sepa
 If a step requires Takara helper code, import from the skill's `lib/` directory:
 
 ```python
+import hashlib
 import importlib
 import sys
 from pathlib import Path
 
-TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+# This skill is checked out under `.claude/skills/` — the same convention `latch-curation`
+# uses. Resolve it rather than hard-coding, and never fall back to `technology_docs/takara`;
+# see <legacy_technology_docs_path> below for why that path is poison.
+_SKILLS_ROOT = Path("/opt/latch/plots-faas/.claude/skills")
 
-# Verify the module is actually there before trusting the path — sys.path.insert of a directory
-# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
-assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+def _resolve_takara_lib() -> Path:
+    """The `lib/` directory to put on sys.path. Raises rather than silently importing stale code."""
+    for cand in (
+        _SKILLS_ROOT / "takara-devkit" / "lib",
+        _SKILLS_ROOT / "latch-skills" / "takara-devkit" / "lib",
+    ):
+        if (cand / "takara" / "background_removal.py").is_file():
+            return cand
+    # Layout changed under us. The skills tree is small, so a search is cheap and beats failing.
+    for hit in _SKILLS_ROOT.rglob("takara/background_removal.py"):
+        return hit.parent.parent
+    raise RuntimeError(
+        f"takara lib not found under {_SKILLS_ROOT}. Do NOT substitute the "
+        f"technology_docs/takara path — it is a frozen pre-monorepo snapshot."
+    )
+
+
+TAKARA_LIB = str(_resolve_takara_lib())
 
 # Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
 # sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
@@ -82,21 +102,50 @@ importlib.invalidate_caches()
 from takara.background_removal import KitType, remove_background
 ```
 
-Three rules, all of which exist because getting this wrong produces a confusing
+Four rules. The first three exist because getting them wrong produces a confusing
 `ModuleNotFoundError` naming a *submodule* (`No module named 'takara.optimize_html_images'`) even
-though `takara` itself imported fine — the signature of a different `takara` winning the import:
+though `takara` itself imported fine — the signature of a different `takara` winning the import.
+The fourth exists because getting it wrong produces no error at all:
 
-1. **Verify the path before using it.** Never trust a hard-coded lib directory blind.
+1. **Verify the path before using it.** Never trust a hard-coded lib directory blind —
+   `sys.path.insert` of a non-existent directory is a silent no-op.
 2. **Purge `sys.modules` and call `importlib.invalidate_caches()`.** The purge handles a package
    bound to another path; `invalidate_caches()` handles cached directory listings that otherwise
    keep a newly-added path's contents invisible.
 3. **Use one path convention everywhere in this skill.** Two paths for the same package means
    whichever imports first wins for the session.
+4. **Resolve under `.claude/skills/`, never under `technology_docs/`.** The wrong one of those
+   two imports successfully and runs months-old code.
 
 For imports that are optional — `takara.optimize_html_images`, used only to shrink report images —
 use the non-raising `_load_takara_optimize()` helper in `<takara_lib_import>` at the end of
 `wf/seeker_pipeline_wf.md` instead, so a missing library degrades the output rather than failing the
 cell.
+
+<legacy_technology_docs_path>
+`/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/` is **not** this
+skill. It is a frozen snapshot of takara-devkit from before it moved into the latch-skills monorepo,
+retained only so older notebooks that hard-code it keep importing. Nothing merged since the move has
+ever reached it.
+
+It is dangerous specifically because it looks healthy:
+
+- **`import takara` succeeds from it.** There is no error to notice — you get a real package with
+  `remove_background` and `KitType`, just an old one.
+- **Its files carry today's mtimes.** The copy job re-runs on pod start, so `ls -l` shows a
+  timestamp from minutes ago on content that is months old. Freshness of mtime says nothing.
+- **The branch you launch the pod from does not change it.** It is a snapshot, not a checkout, so
+  launching from a feature branch leaves it exactly as it was.
+
+Its contents are the takara-devkit tree at the migration commit, minus `SKILL.md` — 15 files,
+`lib/takara/` holding only `__init__.py` (178 bytes) and `background_removal.py` (3,040 bytes). If
+you see two `.py` files in `lib/takara/`, you are in the snapshot.
+
+This cost a full investigation: a 3-billion-read run was benchmarked "old code vs new code" at 3.5 h
+and 5 h, and both numbers were the *same* old code — the optimizations under test had never
+executed. **Confirm the build id before trusting any timing measurement**; `steps/background_removal.md`
+has the check.
+</legacy_technology_docs_path>
 
 ## Requesting files from the user
 
