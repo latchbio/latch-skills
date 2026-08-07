@@ -6,10 +6,18 @@ from takara.background_removal import (
     KitType,
     remove_background,
 )
+from takara.launch import (
+    LaunchGuardResult,
+    LaunchStatus,
+    find_live_executions,
+    launch_workflow_once,
+    params_fingerprint,
+    read_claim,
+)
 from takara.monitor import RunMonitor, monitor, tail
 
 # Bump on every change to this package.
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 def _build_id() -> str:
@@ -50,6 +58,12 @@ __all__ = [
     "BackgroundRemovalResult",
     "KitType",
     "remove_background",
+    "LaunchGuardResult",
+    "LaunchStatus",
+    "find_live_executions",
+    "launch_workflow_once",
+    "params_fingerprint",
+    "read_claim",
     "RunMonitor",
     "monitor",
     "tail",

@@ -53,10 +53,15 @@ For each group defined in `well_labels`, the workflow writes to `output_director
 </outputs>
 
 <example>
+Generate **three cells** — resolve, launch, resume — in the same turn. The resolve/launch split
+exists because `automatic=True` fires an execution on every run of its cell, and in Plots editing a
+cell runs it; keeping the parameter work in a cell with no launch call in it means a retry costs
+nothing. See "Launching a workflow at most once" in `SKILL.md`.
+
+**Cell 1, resolve and validate — cannot launch anything.**
 ```python
 from dataclasses import dataclass, field
 from typing import List
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
 @dataclass
@@ -68,10 +73,14 @@ class LabelInfo:
 class WellLabels:
     labels: List[LabelInfo] = field(default_factory=list)
 
+WF_NAME = "wf.__init__.trekker_qp_demux"
+VERSION = "1.0.0-4cb1c3"
+OUTPUT_DIR = "latch://..."                            # required — set by user
+
 params = {
     "fastq_r1": LatchFile("latch://..."),             # required — set by user
     "fastq_r2": LatchFile("latch://..."),             # required — set by user
-    "output_directory": LatchDir("latch://..."),      # required — set by user
+    "output_directory": LatchDir(OUTPUT_DIR),         # required
     "chemistry": "v3",                                # "v1", "v2", or "v3"
     "well_labels": WellLabels(labels=[
         LabelInfo(group="group_1", wells="A1-A6"),
@@ -81,21 +90,33 @@ params = {
     ]),
 }
 
-w = w_workflow(
-    wf_name="wf.__init__.trekker_qp_demux",
-    key="trekker_qp_demux_run_1",
-    version="1.0.0-4cb1c3",
-    params=params,
-    automatic=True,
-    label="TrekkerQ_P demux",
-)
-execution = w.value
-
-# Do NOT `await execution.wait()` here — the partitioner runs for a long time and the user is told
-# they may shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
+print("WORKFLOW PARAMETERS:")
+for k, v in params.items():
+    print(f"  {k}: {v}")
 ```
 
-**Resume cell** — generate and run it in the same turn as the launch cell, so the button is on screen
+**Cell 2, launch.** One call, nothing else — so it never needs editing.
+```python
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
+
+res = launch_workflow_once(
+    wf_name=WF_NAME,
+    version=VERSION,
+    params=params,
+    label="TrekkerQ_P demux",
+    key_prefix="trekker_qp_demux",   # key is derived — do NOT pass a hand-written key
+    output_dir=OUTPUT_DIR,           # no run_name: this workflow writes straight into output_dir
+    automatic=True,
+)
+print(res.status.value, res.message)
+
+# Do NOT `await res.execution.wait()` here — the partitioner runs for a long time and the user is
+# told they may shut the notebook pod down. Check for outputs with the resume cell below.
+# See <resuming>.
+```
+
+**Cell 3, resume** — generate and run it in the same turn as the launch cell, so the button is on screen
 before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is involved,
 which matters because nothing in Plots can start one. It reads Latch Data rather than kernel state, so
 it also survives a pod restart:

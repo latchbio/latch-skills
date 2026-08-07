@@ -51,9 +51,28 @@ For each candidate, capture: organism, tissue/region, disease/condition, develop
 
 The builder downloads (if a URL), standardizes, curates (drops tiny cell types, caps cells per type), and emits `<run_name>_reference.rds` — a spacexr `Reference` built under the pinned Seurat 4.4.0 stack, so it is guaranteed compatible with RCTD regardless of the original format. That `.rds` becomes `reference_data`. See `wf/rctd_reference_builder_wf.md`.
 
+**Collect `run_name` and `output_directory` for the build in chat, in the same message that presents
+the reference choice.** Do not render a picker for the output directory and then end your turn:
+nothing in Plots can start an agent turn, so the user fills it in, nothing happens, and they
+reasonably conclude you are stuck. This step has already produced that stall. See "Requesting files
+from the user" in `SKILL.md`.
+
 ### Step 2 — Run RCTD
 1. Write the QC-filtered, raw-count AnnData to Latch as `.h5ad` (it must carry spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`).
 2. Launch RCTD with that query and the reference `.rds` per `wf/rctd_wf.md`. Doublet mode is automatic — tell the user, and do not pass a mode parameter.
+
+**Chain the handoff; do not re-ask.** The builder's `reference_data` path is fully determined by the
+parameters you already passed it — `<output_directory>/<run_name>/<run_name>_reference.rds` — so
+carry it straight into the RCTD resolve cell. Asking the user to supply or confirm it again is what
+turns one handoff into several rounds of "yes, go ahead", and each of those is a chance to launch
+something twice.
+
+**One build, then one run, per reference.** Both launches go through `launch_workflow_once`
+(`wf/rctd_reference_builder_wf.md`, `wf/rctd_wf.md`), so a repeated confirmation is a no-op with an
+explanatory message rather than a second execution — but do not lean on that. Before you launch
+either one in response to a "yes", check whether it is already running; see "Launching a workflow at
+most once" in `SKILL.md`. A user who confirms twice is telling you they cannot see what is
+happening, not that they want two runs.
 
 ### Step 3 — Merge results back
 After RCTD completes, load `<run_name>_RCTD.h5ad` (or `<run_name>_RCTD_annotation.txt`) and merge `first_type`, `second_type`, and `spot_class` into the working AnnData's `.obs`, joined on the bead barcode (align indices; not every input bead is necessarily classified). Then:
@@ -89,7 +108,8 @@ The launch cell does not wait for the execution, so when the user returns, follo
 block in `wf/rctd_wf.md`: check Latch Data for `<run_name>_RCTD.h5ad` under
 `output_directory/<run_name>/` rather than judging from notebook state, then continue at Step 3
 above. Never report that RCTD is still running just because the notebook has no record of it
-finishing.
+finishing, and never answer a resume message by re-running the launch cell — that is a second
+execution, not a status check.
 </long_running_guidance>
 
 <new_tab_notice>

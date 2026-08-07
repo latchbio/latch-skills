@@ -174,10 +174,23 @@ if h5ad_picker.value is not None:
 
 If neither route works, fall back to asking the user for the Latch Data path directly.
 
+**Never end your turn waiting for a widget to be filled in.** Nothing in Plots can start an agent
+turn, so a picker you render and then walk away from produces a dead notebook: the user selects a
+file, nothing happens, and after a few minutes they conclude you have hung and interrupt you. This
+has already happened at the RCTD reference-builder step. Either
+
+- ask for the value **in chat** and read it from their reply, or
+- render the picker in the **same cell** as the button that consumes it, so their selection arms a
+  click they can make themselves.
+
+The reactive kernel re-runs that cell when the widget value changes, so the button enables on its
+own — see the pattern in `wf/seeker_pipeline_wf.md`. A widget whose value only *you* can act on is a
+widget the user cannot use.
+
 This applies to **simple, single file or directory inputs only**. It does not apply to the
 multi-parameter entry for `seeker_pipeline_wf` and `trekker_pipeline_wf` — for those pipelines
 build the full parameter entry widget set **and the launch cell at the same time**, exactly as
-those workflow docs specify. Never withhold the `w_workflow` cell waiting for the user to confirm
+those workflow docs specify. Never withhold the launch cell waiting for the user to confirm
 in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
 start the pipeline.
 
@@ -216,6 +229,48 @@ sits next to the thing it is pointing at. Either way, never imply the view will 
 This applies to `steps/` analyses and to the `wf/` parameter-entry, launch, and resume-button cells
 alike. It matters most for anything the user must **click** — a launch button or a resume button
 sitting in an unopened tab is the same as no button at all.
+
+## Launching a workflow at most once
+
+A Seeker test session started **two RCTD deconvolutions ten seconds apart**, both of which ran to
+completion on Latch compute at full cost. Nobody asked for two. The sequence was:
+
+```
+Cell "Launch RCTD" failed          ← the registered wf_name was wrong, as its doc warns
+Edited cell "Launch RCTD"          ← the edit RE-RAN the cell → execution #1
+Ran cell "Launch RCTD"             ← the agent, unsure it had launched → execution #2, 8s later
+```
+
+Nothing about that is exotic — it is what fixing a broken cell looks like. The trap is that
+`w_workflow(automatic=True)` launches on *every* run of its cell, and **in Plots, editing a cell
+runs it**. Five rules:
+
+1. **Call `launch_workflow_once` from `takara.launch`, never `w_workflow` directly**, for anything
+   in `wf/`. It derives the widget key from a hash of the parameters and asks Latch whether a
+   matching execution is already in flight before it renders anything, so a repeat launch is a no-op
+   with an explanation instead of a second run. Widget keys alone cannot do this: they do not
+   survive the agent rewriting the cell, a pod restart, or a second agent turn.
+2. **Keep the fix-and-retry loop out of the launch cell.** Resolve `wf_name`/`version`, build
+   `params`, and validate them in a *separate earlier cell* that contains no launch call. Iterate
+   there freely — it starts nothing. This is the one rule that would have prevented the incident
+   above on its own.
+3. **Editing a launch cell runs it.** Never follow an edit of a launch cell with an explicit run.
+4. **Never re-run a launch cell to find out whether it worked.** Read the workflows executions tab,
+   Latch Data, or `takara.launch.find_live_executions(wf_name)` — all of which observe without
+   launching. A launch cell that "ran successfully" has launched.
+5. **One launch cell per workflow per notebook.** If it needs changing, edit that cell. Never create
+   a second `w_workflow` cell for the same workflow and never invent a fresh key (`rctd_run_2`,
+   `rctd_run_final`) to force a relaunch — a changed *parameter* is what authorizes a new run.
+
+Read `res.status` and respond to what it says rather than assuming a launch happened:
+`LAUNCHED` (started), `BLOCKED_RUNNING` (already in flight — name the existing execution, do not
+retry), `ALREADY_COMPLETE` (point at the resume button), `DEGRADED` (the duplicate check could not
+reach Latch, so the button rendered disarmed — the user clicks it), `LAUNCH_ARMED` (`automatic=False`,
+waiting on a click).
+
+**A repeated confirmation is not a request for a second run.** "Yes", "go ahead", "continue", and
+"is it running?" all arrive when a user cannot see what is happening. Check for a live execution
+before acting on any of them.
 
 ## Long-running workflows
 

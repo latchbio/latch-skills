@@ -34,43 +34,90 @@ Written to `output_directory/<run_name>/`:
 Confirm the resolved source and cell-type column with the user before launching, echoing them back:
 > "I'll convert this reference into an RCTD-compatible object: source=<file or URL>, cell-type column=<cell_type_column>, capped at <max_cells_per_type> cells/type. Ready?"
 
-Only generate and execute the code cell once the user confirms. After it completes, hand `<run_name>_reference.rds` to `wf/rctd_wf.md` as `reference_data`.
+After it completes, hand `<run_name>_reference.rds` to `wf/rctd_wf.md` as `reference_data` — derive
+that path from the parameters you already have rather than asking the user for it again.
 
-> ⚠️ Confirm the registered `wf_name`/`version` against the Latch workflows registry before launching (the reference-builder is a separate registration from RCTD).
+**Collect `output_directory` and `run_name` in chat, before you generate anything.** Do not render a
+picker for them and then end your turn — nothing in Plots can start an agent turn, so the user fills
+the picker in, nothing happens, and after a few minutes they conclude you are stuck and interrupt
+you. That is a real failure this step has produced. If you do render a picker (because the user
+prefers browsing to typing), put it in the **same cell** as the launch button so their selection arms
+a click rather than waiting on a turn that will never come. See "Requesting files from the user" in
+`SKILL.md`.
+
+> ⚠️ Confirm the registered `wf_name`/`version` against the Latch workflows registry before launching (the reference-builder is a separate registration from RCTD). Do that lookup in cell 1, which cannot launch anything.
+
+Generate **two cells** — resolve, then launch. The split exists because the launch cell fires an
+execution every time it runs, and in Plots editing a cell runs it; keeping the `wf_name` lookup and
+the parameter fixes in a cell with no `w_workflow` in it means a retry costs nothing. The full
+reasoning is in the `<launch_discipline>` block of `wf/rctd_wf.md`, and it applies here too.
 </instructions>
 
 <example>
+**Cell 1, resolve and validate — cannot launch anything.** Every retry lives here.
 ```python
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
+WF_NAME = "wf.__init__.rctd_reference_builder_wf"  # confirm against the registered workflow
+VERSION = "0.2.0-74dbff"                           # confirm against the registered version
+RUN_NAME = ""                                      # required — no spaces
+OUTPUT_DIR = "latch://..."                         # required — from the user, collected in chat
+
 params = {
-    "run_name": "",                                  # required — no spaces
+    "run_name": RUN_NAME,
     # Provide exactly ONE of the next two:
     "reference_url": "https://.../reference.h5ad",    # a .h5ad/.rds URL you found, or the user pasted
     # "reference_file": LatchFile("latch://..."),     # a user-attached .h5ad/.rds in LData
     "cell_type_column": "cell_type",                 # confirm for non-CELLxGENE sources / user files
     "max_cells_per_type": 1000,
     "min_cells_per_type": 25,
-    "output_directory": LatchDir("latch://..."),     # required — set by user
+    "output_directory": LatchDir(OUTPUT_DIR),        # required
 }
 
-w = w_workflow(
-    wf_name="wf.__init__.rctd_reference_builder_wf",  # confirm against the registered workflow
-    key="rctd_ref_builder_run_1",
-    version="0.2.0-74dbff",                           # confirm against the registered version
-    params=params,
-    automatic=True,
-    label="RCTD Reference Builder",
-)
-execution = w.value
+print("WORKFLOW PARAMETERS:")
+for k, v in params.items():
+    print(f"  {k}: {v}")
 
-if execution is not None:
-    res = await execution.wait()
-
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
-        # <run_name>_reference.rds is under output_directory/<run_name>/
-        workflow_outputs = list(res.output.values())
+assert RUN_NAME and " " not in RUN_NAME, "run_name is required and must not contain spaces"
+assert ("reference_url" in params) != ("reference_file" in params), "provide exactly one source"
 ```
+
+**Cell 2, launch.** This workflow is short, so the in-turn `await` is fine — but only when the guard
+actually launched something.
+```python
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
+
+res = launch_workflow_once(
+    wf_name=WF_NAME,
+    version=VERSION,
+    params=params,
+    label="RCTD Reference Builder",
+    key_prefix="rctd_ref_builder",   # key is derived — do NOT pass a hand-written key
+    run_name=RUN_NAME,
+    output_dir=OUTPUT_DIR,
+    automatic=True,
+)
+print(res.status.value, res.message)
+
+reference_rds = None
+if res.status is LaunchStatus.LAUNCHED:
+    done = await res.execution.wait()
+
+    if done is not None and done.status == "SUCCEEDED":
+        # <run_name>_reference.rds is under output_directory/<run_name>/. This path is exactly what
+        # wf/rctd_wf.md takes as `reference_data` — hand it over, do not re-ask the user for it.
+        reference_rds = f"{OUTPUT_DIR.rstrip('/')}/{RUN_NAME}/{RUN_NAME}_reference.rds"
+        workflow_outputs = list(done.output.values())
+    elif done is not None:
+        print(f"Reference build {done.status} — read the execution logs before relaunching.")
+elif res.status is LaunchStatus.BLOCKED_RUNNING:
+    # Already building. Do not relaunch, and do not re-run this cell to check on it.
+    print(res.existing.describe())
+```
+
+If the build fails on a wrong `cell_type_column`, the workflow logs the available columns. Correct it
+in **cell 1**, then re-run cell 2 — the changed parameter gives the launch a new fingerprint, so the
+guard treats it as the genuinely new run that it is.
 </example>
 

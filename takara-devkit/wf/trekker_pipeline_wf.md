@@ -154,10 +154,13 @@ pipeline by clicking the button that the launch cell renders.
 
 Rules for the launch cell:
 
-- Call `w_workflow(...)` **unconditionally at the top level of the cell.** Never place it inside an
-  `if`, a `try`, or a loop body that can be skipped, and never withhold it because the widget values
-  still look empty. An unrendered `w_workflow` is a missing launch button — that is the failure mode
-  this pattern exists to prevent.
+- Call `launch_workflow_once(...)` — never `w_workflow` directly — **unconditionally at the top
+  level of the cell.** Never place it inside an `if`, a `try`, or a loop body that can be skipped,
+  and never withhold it because the widget values still look empty. An unrendered launch call is a
+  missing launch button — that is the failure mode this pattern exists to prevent. The helper guards
+  against launching a run that is already in flight, and skips that check entirely while
+  `readonly=True`, so it costs nothing on the reactive re-runs this cell does on every keystroke.
+  See "Launching a workflow at most once" in `SKILL.md`.
 - Pass `automatic=False` so the workflow launches on click instead of firing the moment the cell
   runs. **This deliberately overrides the `automatic=True` default in `latch-workflows/SKILL.md`**,
   which assumes params are hard-coded rather than entered through widgets. For the Trekker and
@@ -166,7 +169,7 @@ Rules for the launch cell:
 - Collect the file and directory parameters with `w_ldata_picker` (`file_type="file"` / `"dir"`).
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
-  the cell before `w_workflow` is reached, which removes the button.
+  the cell before the launch call is reached, which removes the button.
 - Include the `w_text_output(...)` long-running notice inside `if execution is not None:`. The click
   lands after your turn ends, so a chat message you would "display after launching" never happens —
   the cell has to render it. See `<long_running_guidance>`.
@@ -241,7 +244,8 @@ attach, set the picker's `default` to the attached `latch://` path so the cell s
 
 **Cell 2, launch:**
 ```python
-from lplots.widgets.workflow import w_workflow
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
 
@@ -273,16 +277,18 @@ params = {
 }
 
 # ALWAYS called — never inside a conditional, or the launch button will not render
-w = w_workflow(
+res = launch_workflow_once(
     wf_name="wf.__init__.trekker_pipeline_wf",
-    key="trekker_workflow_run_1",
     version="1.4.11-909971",
     params=params,
+    label="Launch Trekker workflow",
+    key_prefix="trekker_workflow",  # key is derived from params — do NOT pass a hand-written key
+    run_name=f"{params['analysis_date']}_{params['sample_id']}",   # the run dir Trekker writes
+    output_dir=params["output_dir"],
     automatic=False,                # user clicks the button to launch
     readonly=not params_ready,      # button disabled until every field is set
-    label="Launch Trekker workflow",
 )
-execution = w.value
+execution = res.execution
 
 if execution is not None:
     # The long-running notice MUST be rendered here, by the cell itself. The click happens
@@ -435,7 +441,8 @@ Multiple reactions (one button per reaction, each launching independently). Buil
 entry widgets per reaction in cell 1 — same widgets as above, with `key` suffixed by the
 reaction number — then in cell 2:
 ```python
-from lplots.widgets.workflow import w_workflow
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
 
@@ -458,18 +465,21 @@ executions = []
 for i, params in enumerate(all_params, start=1):
     ready_i = all(v not in (None, "") for v in params.values())
 
-    # ALWAYS called for every reaction — one button each
-    w = w_workflow(
+    # ALWAYS called for every reaction — one button each. Each reaction's params differ, so the
+    # derived keys differ too; do not add `i` to key_prefix to force that.
+    res_i = launch_workflow_once(
         wf_name="wf.__init__.trekker_pipeline_wf",
-        key=f"trekker_workflow_run_{i}",
         version="1.4.11-909971",
         params=params,
+        label=f"Launch Trekker workflow — reaction {i}",
+        key_prefix="trekker_workflow",
+        run_name=f"{params['analysis_date']}_{params['sample_id']}",
+        output_dir=params["output_dir"],
         automatic=False,
         readonly=not ready_i,
-        label=f"Launch Trekker workflow — reaction {i}",
     )
-    if w.value is not None:
-        executions.append(w.value)
+    if res_i.execution is not None:
+        executions.append(res_i.execution)
 
         # one notice per launched reaction — rendered by the cell, not by the agent
         w_text_output(

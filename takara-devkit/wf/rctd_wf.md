@@ -45,39 +45,99 @@ Written to `output_directory/<run_name>/`:
 After the reference `.rds` and the QC-filtered query `.h5ad` are both staged on Latch, confirm with the user before launching:
 > "Reference and query are ready. RCTD will run in doublet mode on Latch compute. Let me know when you're ready to start."
 
-Only generate and execute the code cell once the user confirms.
+Only generate and execute the code cells once the user confirms.
 
-> ⚠️ Confirm the registered workflow name and version before launching. As of writing the RCTD deployment registers under display name "RCTD" (function `rctd_wf`, version `1.0.2`); the `.latch/workflow_name` file currently reads `wf.__init__.RCTD_workflow`. If the launch fails with an unknown-workflow error, look up the exact `wf_name`/`version` from the Latch workflows registry and use those.
+> ⚠️ Confirm the registered workflow name and version before launching. As of writing the RCTD deployment registers under display name "RCTD" (function `rctd_wf`, version `1.0.2`); the `.latch/workflow_name` file currently reads `wf.__init__.RCTD_workflow`. If the launch fails with an unknown-workflow error, look up the exact `wf_name`/`version` from the Latch workflows registry and use those. **Do that lookup in cell 1**, which cannot launch anything — see `<launch_discipline>`.
+
+Generate **three cells** — resolve, launch, resume — and generate all three in the same turn.
 </instructions>
 
+<launch_discipline>
+This step has started two RCTD deconvolutions ten seconds apart. It is worth understanding how,
+because the shape of the mistake is not obvious:
+
+1. The launch cell failed the first time — the `wf_name` warning above is exactly the reason.
+2. The agent **edited** the cell to fix it. In Plots an edit re-runs the cell, and re-running a cell
+   holding `w_workflow(automatic=True)` *is* a workflow execution. That was execution #1.
+3. Seeing no confirmation it had launched, the agent then explicitly **ran** the cell. Execution #2,
+   eight seconds later. Both ran to completion on Latch compute, at full cost.
+
+Four rules follow, and the cell split below exists to enforce the first:
+
+- **Never put the fix-and-retry loop in a cell that can launch.** Resolving `wf_name`/`version`,
+  building `params`, and validating them happen in **cell 1**, which contains no `w_workflow` call.
+  Iterate there as many times as you need; it starts nothing.
+- **Editing a launch cell runs it.** Never follow an edit of the launch cell with an explicit run.
+  If you must edit it, the edit already ran it.
+- **Never re-run the launch cell to check whether it worked.** Read the workflows executions tab or
+  Latch Data. A launch cell that "ran successfully" has launched.
+- **One launch cell per workflow.** Never create a second `w_workflow` cell for RCTD, and never
+  invent a new `key` to force a relaunch. `launch_workflow_once` derives the key from the parameters
+  — changing a parameter is what authorizes a new run.
+
+`launch_workflow_once` also checks Latch for an in-flight RCTD before it renders anything, so a
+repeat of the sequence above is a no-op with an explanatory message rather than a second run. Use it
+instead of `w_workflow` directly; it is not optional here.
+</launch_discipline>
+
 <example>
+**Cell 1, resolve and validate — this cell cannot launch anything.** Every retry lives here.
 ```python
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
+WF_NAME = "wf.__init__.rctd_wf"   # confirm against the registered RCTD workflow (see instructions)
+VERSION = "1.0.2-9e8dc3"          # confirm against the registered version
+RUN_NAME = ""                     # required — set by user, no spaces
+OUTPUT_DIR = "latch://..."        # required — set by user
+
 params = {
-    "run_name": "",                                  # required — set by user, no spaces
+    "run_name": RUN_NAME,
     "input_data": LatchFile("latch://..."),          # required — QC-filtered query .h5ad on Latch
     "reference_data": LatchFile("latch://..."),      # required — reference .rds (builder output or user's own)
-    "output_directory": LatchDir("latch://..."),     # required — set by user
+    "output_directory": LatchDir(OUTPUT_DIR),        # required
     # advanced params default to Seeker-tuned values; only add if the user changes them
 }
 
-w = w_workflow(
-    wf_name="wf.__init__.rctd_wf",   # confirm against the registered RCTD workflow (see instructions)
-    key="rctd_run_1",
-    version="1.0.2-9e8dc3",          # confirm against the registered version
-    params=params,
-    automatic=True,
-    label="RCTD",
-)
-execution = w.value
+print("WORKFLOW PARAMETERS:")
+for k, v in params.items():
+    print(f"  {k}: {v}")
 
-# Do NOT `await execution.wait()` here — RCTD runs for a long time and the user is told they may
-# shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
+assert RUN_NAME and " " not in RUN_NAME, "run_name is required and must not contain spaces"
+assert all(v is not None for v in params.values()), "no parameter may be None"
 ```
 
-**Resume cell** — generate and run it in the same turn as the launch cell, so the button is on screen
+**Cell 2, launch.** One call, nothing else — so it never needs editing.
+```python
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
+
+res = launch_workflow_once(
+    wf_name=WF_NAME,
+    version=VERSION,
+    params=params,
+    label="RCTD",
+    key_prefix="rctd",          # the widget key is derived — do NOT pass a hand-written key
+    run_name=RUN_NAME,
+    output_dir=OUTPUT_DIR,
+    automatic=True,
+)
+print(res.status.value, res.message)
+
+# Do NOT `await res.execution.wait()` here — RCTD runs for a long time and the user is told they may
+# shut the notebook pod down. Check for outputs with the resume cell below. See <resuming>.
+```
+
+Read `res.status` and say the matching thing in chat — do not re-run the cell to find out:
+
+| `res.status` | What happened | What to tell the user |
+|---|---|---|
+| `LAUNCHED` | The execution started. | The `<long_running_guidance>` message below, in full. |
+| `BLOCKED_RUNNING` | An RCTD run is already in flight; nothing started. | Name the execution from `res.existing.describe()` and point at the executions tab. Do **not** retry. |
+| `ALREADY_COMPLETE` | These parameters already ran. | Point at the resume button; a new run needs a changed parameter. |
+| `DEGRADED` | The duplicate check could not reach Latch, so the button rendered disarmed. | Ask the user to check the executions tab for an existing run, then click **RCTD** in the tab. |
+| `LAUNCH_ARMED` | `automatic=False` and no click yet. | Tell them which tab the button is in. |
+
+**Cell 3, resume** — generate and run it in the same turn as the launch cell, so the button is on screen
 before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is involved,
 which matters because nothing in Plots can start one. It reads Latch Data rather than kernel state, so
 it also survives a pod restart:
@@ -131,8 +191,9 @@ runtime, browse the run directory with `w_ldata_browser(dir=run_dir)` instead.
 </example>
 
 <long_running_guidance>
-After launching the workflow execution, display this message to the user **in full** — do not
-shorten it or drop the pod shutdown advice:
+When cell 2 reports `LAUNCHED`, display this message to the user **in full** — do not
+shorten it or drop the pod shutdown advice. (On `BLOCKED_RUNNING` the run was already going and the
+user has already had this message; send it again only if they ask what is happening.)
 
 "RCTD is now running on Latch compute and will take some time to finish (the fitPixels step is the longest; it logs progress and ETA per batch). It runs independently of this notebook, so you may **shut down the notebook pod while the workflow runs, which stops the notebook compute charges and saves cost**. Shutting the pod down will not interrupt the workflow. You may monitor progress in the workflows executions tab. When the workflow has completed, restart the pod, reopen the notebook, and go to the **RCTD** tab — the **Check my RCTD results** button is in that tab, and clicking it will confirm the results are ready and tell you what happens next."
 
@@ -160,8 +221,12 @@ treat that as a resume signal and check Latch Data *before* answering:
 - **Check Latch Data.** `<run_name>_RCTD.h5ad` present under `output_directory/<run_name>/` means the
   run finished; nothing there means it is still running or failed, and the user should check the
   workflows executions tab.
-- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or `res` — they
-  are gone and are not needed. Everything downstream is derived from the Latch Data paths.
+- **If kernel state was lost** (pod restarted), do not try to reconstruct `execution` or the guard
+  result — they are gone and are not needed. Everything downstream is derived from the Latch Data
+  paths, and the launch guard's record lives in `<run_name>/.takara_launch.json`, not in the kernel.
+- **Never answer a resume message by re-running the launch cell.** "Continue", "is it done?", and a
+  second "yes" are not requests for a second run. Check Latch Data; if you want the platform's view,
+  call `takara.launch.find_live_executions("rctd_wf")`, which reads it without launching anything.
 - Once `<run_name>_RCTD.h5ad` is present, go straight on to step 3 of `steps/rctd.md` and merge the
   labels back into the working AnnData. Do not ask the user to re-confirm that the run finished.
 </resuming>
