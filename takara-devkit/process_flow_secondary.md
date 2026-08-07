@@ -21,9 +21,9 @@ flowchart TD
 
     QC[qc\nQuality Control + Cell Filtering]:::step
 
-    QC --> RCTD_Q{Seeker: run RCTD?\noptional}:::decision
-    RCTD_Q -->|Yes| RCTD[rctd\nReference build → doublet-mode\ndeconvolution → labels into .obs]:::seeker
-    RCTD_Q -->|No| NORM
+    QC --> RCTD_Q{Seeker: run RCTD?\nalways recommended here}:::decision
+    RCTD_Q -->|Yes — recommended| RCTD[rctd\nReference build → doublet-mode\ndeconvolution → labels into .obs]:::seeker
+    RCTD_Q -->|No — user skips| NORM
     RCTD --> NORM
     RCTD -. per-bead labels .-> CELL
     RCTD -. per-bead labels .-> CELL2

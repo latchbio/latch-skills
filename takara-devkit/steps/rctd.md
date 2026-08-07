@@ -3,17 +3,24 @@ Assign reference-based cell types to every bead using Robust Cell Type Deconvolu
 
 **Seeker only.** Skip this step entirely for Trekker data — RCTD's doublet mode assumes ~1–3 cells per bead, which is a Seeker property. If the kit type is unknown, ask: "Was this data generated with a Seeker or Trekker kit?"
 
-**Optional and separate.** RCTD is an optional, reference-based track that runs **after QC + Filtering** on the raw-count, pre-normalization AnnData. It does **not** depend on normalization, feature selection, dimensionality reduction, clustering, or DEG, and those steps run unchanged whether or not RCTD is used. RCTD's per-bead labels are consumed later, at Cell Type Annotation (`steps/cell_typing.md`), to label and validate Leiden clusters — it complements, and does not replace, marker-based annotation.
+**Recommended, skippable, and separate.** For Seeker data, **always recommend RCTD**, and always run it **after QC + Filtering and before Normalization** — on the raw-count, pre-normalization AnnData. The user may decline; make skipping an explicit, easy choice rather than the default. RCTD is a separate reference-based track: it does **not** depend on normalization, feature selection, dimensionality reduction, clustering, or DEG, and those steps run unchanged whether or not RCTD is used. RCTD's per-bead labels are consumed later, at Cell Type Annotation (`steps/cell_typing.md`), to label and validate Leiden clusters — it complements, and does not replace, marker-based annotation.
+
+The position in the order is not a preference — it is a requirement. RCTD reads raw counts, and normalization overwrites `.X`, so running it later means recovering raw counts or redoing QC. Recommend it at the point in the workflow where the object is already in the state RCTD needs.
 
 **Division of labor.** *You* (the Agent) are responsible for finding the most appropriate reference for the user's tissue across multiple public atlases and presenting choices. The `rctd_reference_builder` workflow is a **pure converter** — give it one chosen reference (a `.h5ad`/`.rds` file or a download URL) and it returns a version-compatible spacexr `Reference` `.rds`. It does **not** search anything.
 </goal>
 
 <method>
-### When to offer
-After QC + Filtering completes, offer RCTD to Seeker users:
-> "Optionally, I can run RCTD to assign cell types to each bead using a single-cell reference. This complements the cluster-based annotation later. Would you like to run it?"
+### When to recommend
+As soon as QC + Filtering completes — and **before** starting Normalization — recommend RCTD to every Seeker user. Recommend it, don't merely mention it, and state both the recommendation and the opt-out in the same message:
 
-If yes, proceed. RCTD needs the **QC-filtered, raw-count** AnnData (raw counts in `.X`, spatial coordinates in `.obsm`) — use it **before** normalization. If normalization has already overwritten `.X`, recover raw counts from the raw layer or re-derive from the QC-filtered object.
+> "Now that filtering is done, I recommend running RCTD before we normalize. It assigns a cell type to each bead from a single-cell reference, which gives us reference-based labels to check the Leiden clusters against later. This is the right point for it — RCTD needs raw counts, and normalization overwrites them. Shall I go ahead, or would you rather skip RCTD and move straight to normalization?"
+
+Ask this **every time** for Seeker data, even if the user has not mentioned cell typing. Do not run it for Trekker data, and do not raise it there.
+
+**If the user declines, skip it cleanly.** Move straight to `steps/normalization.md` — no second ask, no repeated pitch, no implication that the rest of the analysis is degraded. It is not: steps 4–9 are complete on their own, and `steps/cell_typing.md` falls back to marker-based annotation. Note in passing that RCTD can still be run later from the QC-filtered object if they change their mind, and continue.
+
+If the user agrees, proceed. RCTD needs the **QC-filtered, raw-count** AnnData (raw counts in `.X`, spatial coordinates in `.obsm`) — use it **before** normalization. If normalization has already overwritten `.X`, recover raw counts from the raw layer or re-derive from the QC-filtered object.
 
 ### Step 1 — Find and choose a reference (Agent-driven)
 
@@ -57,6 +64,27 @@ nothing in Plots can start an agent turn, so the user fills it in, nothing happe
 reasonably conclude you are stuck. This step has already produced that stall. See "Requesting files
 from the user" in `SKILL.md`.
 
+**1f. If the build fails, recover — don't stop and don't retry blindly.** A reference the workflow
+cannot use is a normal outcome of picking one off the web, and recovering from it is *your* job: the
+user cannot search the atlases themselves. The failed build uploads
+`<run_name>_reference_FAILED.txt` to its output directory; read it, and follow `<failure_recovery>`
+in `wf/rctd_reference_builder_wf.md` — it maps each `error code:` to the right recovery. In short:
+
+1. Read the report and say, in plain language, which reference failed and why (out of memory, wrong
+   cell-type column, dead download link, Seurat v5, …).
+2. If it is a parameter problem (`CELL_TYPE_COLUMN_NOT_FOUND`, `CELL_TYPE_BELOW_MIN`), name the fix
+   and offer to relaunch with it — the reference itself is fine.
+3. Otherwise **ask the user whether you should go find a different reference**, stating the
+   constraint the failure taught you (e.g. "smaller than ~300k cells", "one that ships raw counts",
+   "a `.h5ad` rather than the Seurat v5 `.rds`"). On yes, return to **1b** and search again with that
+   constraint applied, present candidates as in **1c**, and rebuild via **1e** under a new
+   `run_name`.
+4. Never carry on to Step 2 after a failed build — there is no `.rds` to deconvolve with — and never
+   end the turn on a failure without both the explanation and the question.
+
+If the user would rather not pursue a reference at all, skip RCTD cleanly per the opt-out above and
+continue at `steps/normalization.md`.
+
 ### Step 2 — Run RCTD
 1. Write the QC-filtered, raw-count AnnData to Latch as `.h5ad` (it must carry spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`).
 2. Launch RCTD with that query and the reference `.rds` per `wf/rctd_wf.md`. Doublet mode is automatic — tell the user, and do not pass a mode parameter.
@@ -91,7 +119,11 @@ These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `
 </library>
 
 <self_eval_criteria>
+- For Seeker data, RCTD was **recommended** — not merely offered — immediately after QC + Filtering and before any normalization, and the same message gave the user an explicit way to skip it.
+- If the user skipped RCTD, the workflow continued straight to normalization without re-pitching it.
+- The object handed to RCTD holds QC-filtered raw counts in `.X` (normalization had not yet run).
 - The chosen reference's organism matches the data; its tissue, condition, and (if relevant) developmental stage are a sensible match for the sample.
+- If the reference build failed, its `<run_name>_reference_FAILED.txt` was read and its cause was reported to the user in plain language — and the user was **asked** whether to find a different reference, rather than left with an unexplained failure or a blind relaunch of the same parameters.
 - Reference and query share a non-zero set of genes (RCTD errors on zero overlap — the builder reports the reference gene count; sanity-check it against the query's genes before launching).
 - The cell types present in the reference are plausible for the user's tissue.
 - After running, the fraction of beads classified as `singlet`/`doublet` (vs `reject`) is reasonable; a very high reject rate suggests a reference/tissue mismatch — surface this to the user.

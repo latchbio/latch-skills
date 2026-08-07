@@ -38,6 +38,7 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 2b. Image Overlay (always offer after loading; e.g. H&E) — [step details](steps/image_overlay.md)
 3. Background Removal (Seeker only) — [step details](steps/background_removal.md)
 4. Quality Control and Filtering — [step details](steps/qc.md)
+4b. RCTD Cell Type Deconvolution (Seeker only; always recommended here, user may skip) — [step details](steps/rctd.md)
 5. Normalization — [step details](steps/normalization.md)
 6. Feature Selection — [step details](steps/feature_selection.md)
 7. Dimensionality Reduction — [step details](steps/dimensionality_reduction.md)
@@ -45,13 +46,13 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 9. Differential Gene Expression — [step details](steps/diff_gene_expression.md)
 10. Cell Type Annotation — [step details](steps/cell_typing.md)
 
-RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a separate reference-based track — [step details](steps/rctd.md), [RCTD workflow](wf/rctd_wf.md), [reference builder workflow](wf/rctd_reference_builder_wf.md)
+Step 4b (RCTD) is a separate reference-based track that always sits **after QC + Filtering and before Normalization**, because it consumes raw counts and normalization overwrites them — [step details](steps/rctd.md), [RCTD workflow](wf/rctd_wf.md), [reference builder workflow](wf/rctd_reference_builder_wf.md)
 
 ## Important branches
 
 - Run Reads to Counts only when the user starts from FASTQ files.
 - Run Background Removal only for Seeker datasets.
-- Run RCTD only for Seeker datasets, optionally, after QC. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
+- Run RCTD only for Seeker datasets. For those, **always recommend it, positioned after QC + Filtering and before Normalization** — that is where the object still holds QC-filtered raw counts, which is what RCTD requires. Offer the skip in the same message; if the user declines, continue to normalization without re-asking. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
 - If the user already has a processed H5AD, start at the Data Loading step.
 - Always ask, right after Data Loading, whether the user has an H&E or other pathology image to overlay — don't wait for them to bring it up. If yes, the image is almost always a separate file from the H5AD; load it and use the viewer's alignment tool to register it. Loading the H5AD alone does not align an image. Open the H5AD viewer with `sync_to` set to its `LPath` (see `steps/data_loading.md`) so the alignment persists back to the file automatically.
 

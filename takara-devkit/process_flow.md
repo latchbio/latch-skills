@@ -117,7 +117,7 @@ flowchart TD
 *(TrekkerU_PIP no longer needs a preprocessing step as of Trekker v1.4.11 — PIPSeeker conversion is built into `trekker_pipeline`, so it follows the standard-platform path above.)*
 
 **Secondary Analysis (all paths)**
-`data_loading` (viewer opened with `sync_to`) → *always ask: have an H&E/pathology image to overlay?* → *(optional)* `image_overlay` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
+`data_loading` (viewer opened with `sync_to`) → *always ask: have an H&E/pathology image to overlay?* → *(optional)* `image_overlay` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → *(Seeker only, always recommended — user may skip)* `rctd` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
 
 **Visualization Only / Image Overlay**
 `data_loading` (viewer opened with `sync_to`) → *always ask about image overlay* → *(optional)* `image_overlay` (load separate image file → align with viewer's alignment tool → alignment persists to the H5AD via `sync_to`) → ask about secondary analysis → Analysis Complete

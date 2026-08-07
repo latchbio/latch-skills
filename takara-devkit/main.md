@@ -40,7 +40,7 @@ the tab and say what is in it — before moving on. See "Telling the user where 
 1b. Image Overlay (*always offer, optional*) -> `steps/image_overlay.md`
 2. Background Removal (*Seeker ONLY*) -> `steps/background_removal.md`
 3. Quality Control + Filtering -> `steps/qc.md`
-3b. RCTD Cell Type Deconvolution (*Seeker ONLY, optional*) -> `steps/rctd.md`
+3b. RCTD Cell Type Deconvolution (*Seeker ONLY, recommended — user may skip*) -> `steps/rctd.md`
 4. Normalization -> `steps/normalization.md`
 5. Feature Selection -> `steps/feature_selection.md`
 6. Dimensionality Reduction -> `steps/dimensionality_reduction.md`
@@ -48,7 +48,7 @@ the tab and say what is in it — before moving on. See "Telling the user where 
 8. Differential Gene Expression -> `steps/diff_gene_expression.md`
 9. Cell Type Annotation -> `steps/cell_typing.md`
 
-Step 3b (RCTD) is an **optional, Seeker-only** reference-based track that runs on the QC-filtered raw counts. It is **separate from** the steps 4–9 track (normalization → clustering → DEG → annotation), which run unchanged whether or not RCTD is used. Offer it after QC; if the user declines, skip straight to step 4. When RCTD is run, its per-bead labels are written into `adata.obs` and consumed at step 9 to label and validate Leiden clusters — complementing, not replacing, marker-based annotation.
+Step 3b (RCTD) is a **Seeker-only** reference-based track that runs on the QC-filtered raw counts. **Always recommend it, and always at this position** — after step 3 (QC + Filtering) and before step 4 (Normalization) — because RCTD needs raw counts and normalization overwrites `.X`. Recommend it in the same message that offers the skip: the user may decline, and if they do, go straight to step 4 without re-asking. Steps 4–9 (normalization → clustering → DEG → annotation) are a separate track and run unchanged either way. When RCTD is run, its per-bead labels are written into `adata.obs` and consumed at step 9 to label and validate Leiden clusters — complementing, not replacing, marker-based annotation.
 </plan>
 
 <plan id="visualization_only" label="Visualization Only">

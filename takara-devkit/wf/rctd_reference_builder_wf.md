@@ -28,6 +28,11 @@ Written to `output_directory/<run_name>/`:
 - `<run_name>_reference.rds` — the spacexr `Reference` object. **This is the file to pass as `reference_data` to `wf/rctd_wf.md`.**
 - `<run_name>_reference_summary.txt` — per-cell-type counts, gene count, and the source (filename or URL).
 - `<run_name>_reference_celltypes.png` — bar plot of cells per cell type after curation.
+- `<run_name>_reference_FAILED.txt` — **written only when the build fails**, and uploaded before the
+  task errors. It carries `error code:`, what went wrong, what to try next, the parameters, a
+  resource snapshot, and the last 80 log lines of the failing stage. A failed Latch task uploads no
+  other outputs, so this file is how you diagnose a failure from the notebook without asking the
+  user to paste console logs. Read it — do not guess at the cause. See `<failure_recovery>`.
 </outputs>
 
 <instructions>
@@ -59,7 +64,8 @@ reasoning is in the `<launch_discipline>` block of `wf/rctd_wf.md`, and it appli
 from latch.types import LatchFile, LatchDir
 
 WF_NAME = "wf.__init__.rctd_reference_builder_wf"  # confirm against the registered workflow
-VERSION = "0.2.0-74dbff"                           # confirm against the registered version
+VERSION = "0.3.0-329a99"                           # confirm against the registered version;
+                                                   # 0.3.0+ writes the failure report below
 RUN_NAME = ""                                      # required — no spaces
 OUTPUT_DIR = "latch://..."                         # required — from the user, collected in chat
 
@@ -101,6 +107,7 @@ res = launch_workflow_once(
 print(res.status.value, res.message)
 
 reference_rds = None
+build_failure = None
 if res.status is LaunchStatus.LAUNCHED:
     done = await res.execution.wait()
 
@@ -110,14 +117,75 @@ if res.status is LaunchStatus.LAUNCHED:
         reference_rds = f"{OUTPUT_DIR.rstrip('/')}/{RUN_NAME}/{RUN_NAME}_reference.rds"
         workflow_outputs = list(done.output.values())
     elif done is not None:
-        print(f"Reference build {done.status} — read the execution logs before relaunching.")
+        # The failure report is the diagnosis. Print it — every recovery decision comes from it,
+        # and the user can read it too.
+        from pathlib import Path
+
+        from latch.ldata.path import LPath
+
+        print(f"Reference build {done.status}.")
+        remote = f"{OUTPUT_DIR.rstrip('/')}/{RUN_NAME}/{RUN_NAME}_reference_FAILED.txt"
+        try:
+            local = Path("/tmp") / f"{RUN_NAME}_reference_FAILED.txt"
+            LPath(remote).download(local)
+            build_failure = local.read_text()
+            print(build_failure)
+        except Exception as e:
+            # No report means the task died before it could write one (an infra failure, or a
+            # pod that vanished). Fall back to the console log.
+            print(f"No failure report at {remote} ({e}).")
+            print(f"Open the execution log on the Latch console: {res.execution.id}")
 elif res.status is LaunchStatus.BLOCKED_RUNNING:
     # Already building. Do not relaunch, and do not re-run this cell to check on it.
     print(res.existing.describe())
 ```
-
-If the build fails on a wrong `cell_type_column`, the workflow logs the available columns. Correct it
-in **cell 1**, then re-run cell 2 — the changed parameter gives the launch a new fingerprint, so the
-guard treats it as the genuinely new run that it is.
 </example>
+
+<failure_recovery>
+**A failed build is a fork in the conversation, not a dead end — and never a silent retry.** When
+`done.status` is anything but `SUCCEEDED`:
+
+1. **Read `<run_name>_reference_FAILED.txt`** (the cell above prints it). Its `error code:` line tells
+   you which of the two recoveries applies. Never relaunch on a guess, and never relaunch the exact
+   same parameters — that reproduces the same failure and burns another wait.
+2. **Tell the user what happened in one or two plain sentences**, naming the reference that failed.
+   Not "the workflow failed" — "the mouse embryo reference from CELLxGENE is 1.4M cells and ran out
+   of memory while loading".
+3. **Offer the recovery that matches the code, and ask before acting.**
+
+| `error code:` | What it means | What to offer |
+|---|---|---|
+| `CELL_TYPE_COLUMN_NOT_FOUND` | The reference is fine; the column name was wrong. The report lists the available `.obs` columns. | Pick the right column from that list yourself, name it, and ask to relaunch with it. Do **not** go hunting for a new reference. |
+| `TOO_FEW_CELL_TYPES`, `CELL_TYPE_BELOW_MIN` | Curation left < 2 types — usually `min_cells_per_type` is too high for a small reference. | Offer the lowered threshold **and** a different, richer reference; let the user choose. |
+| `NO_LABELED_CELLS` | The column exists but holds no labels. | Another column, or a different reference. |
+| `REFERENCE_TOO_LARGE`, `OOM_KILLED`, `OUT_OF_MEMORY` | The reference does not fit in the task's memory. | **Find a different reference** — a smaller one. Not a parameter fix: `max_cells_per_type` caps cells *after* the whole file is read, so it cannot rescue a file too big to load. |
+| `DOWNLOAD_HTTP_ERROR`, `DOWNLOAD_FAILED`, `DOWNLOAD_NOT_A_REFERENCE`, `H5AD_NOT_HDF5` | The URL didn't yield the data file — expired signed link, a landing page, an auth wall. | Look for a fresh direct link to the *same* dataset first; if there isn't one, offer a different reference or ask the user to download it to LData and attach it. |
+| `H5AD_UNREADABLE`, `RDS_UNREADABLE`, `RDS_UNSUPPORTED_CLASS`, `SEURAT_COUNTS_MISSING`, `NON_INTEGER_COUNTS` | The file is the wrong shape for RCTD (Seurat v5, no raw counts, normalized values). | A different reference — or, for a Seurat v5 `.rds`, the same dataset as `.h5ad`. |
+| `STAGE_SIGNALED`, `UNHANDLED`, `UNHANDLED_R_ERROR`, `MISSING_*` | A builder bug, not a bad choice by the user. | Say so plainly, offer to try a different reference, and tell them the execution log is worth sending to support. |
+
+4. **Ask, in the same message, whether to go find a different reference.** This is the recovery the
+   user cannot start themselves — they do not know which atlases you can search. Make it a direct
+   question with the constraint you learned from the failure stated in it:
+
+   > The mouse embryo reference I picked (CELLxGENE, ~1.4M cells) ran out of memory while loading —
+   > it's too large for the builder. Would you like me to find a smaller mouse embryo reference
+   > (ideally under ~300k cells, E9.5–E13.5) and rebuild? I can also use one you supply instead.
+
+5. **On yes, go back to `steps/rctd.md` step 1b** and search again *with the constraint applied* —
+   for a size failure, prefer per-tissue or per-stage subsets over whole-atlas files, and state each
+   candidate's cell count so the user can see it is smaller. Present candidates as usual, then
+   relaunch: fix the parameters in **cell 1**, then re-run cell 2.
+6. **Use a new `run_name` for the retry** (e.g. `<run>_v2`) when the source changed. The failed run's
+   directory already holds `<run_name>_reference_FAILED.txt`; a fresh name keeps the failed and the
+   good attempt distinguishable, and gives the launch guard a genuinely new fingerprint. A pure
+   parameter fix (`cell_type_column`) can keep the same `run_name` — the changed parameter is enough
+   for the guard to treat it as a new run.
+7. **Never move on to `wf/rctd_wf.md` after a failed build.** There is no `.rds` to pass. And never
+   end the turn on a failure without both the explanation and the question — a failure the user has
+   to notice by themselves is the same stall as an unattended picker.
+
+If the user declines a new reference, say that RCTD needs one to run, note that the rest of the
+analysis is unaffected, and continue at `steps/normalization.md` per the skip path in
+`steps/rctd.md`.
+</failure_recovery>
 
