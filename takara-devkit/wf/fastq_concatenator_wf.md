@@ -14,7 +14,7 @@ Note: If the FASTQ files come from **different reactions** (different sample ind
 The workflow accepts an unlimited number of FASTQ files per run. Run it twice — once for all R1 files, once for all R2 files.
 
 - **fastq_files** (`List[LatchFile]`, **required, minimum 2**) — List of `.fastq.gz` or `.fq.gz` files to concatenate. Files are concatenated in the order provided. Use the "Bulk Add Files" feature in the Latch UI to add multiple files at once.
-- **output_directory** (`LatchOutputDir`, **required**) — Directory on Latch where the concatenated file will be saved. Must be provided by the user.
+- **output_directory** (`LatchOutputDir`, **required**) — Directory on Latch where the concatenated file will be saved. Must be provided by the user. Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same message as the other parameters you are collecting in chat; prefill `default=` with a directory the user chose earlier in this session and name it in chat, and offer no default if there is none. Both runs (R1 and R2) go to the same directory — ask once. See "Asking for an output directory" in `SKILL.md`.
 - **output_filename** (`str`, **required**) — Name for the output file. Must end in `.fastq.gz` or `.fq.gz`. Use a descriptive name that makes clear whether this is R1 or R2 (e.g. `sampleA_merged_R1.fastq.gz`).
 </parameters>
 

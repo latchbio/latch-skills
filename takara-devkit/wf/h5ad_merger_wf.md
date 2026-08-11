@@ -50,6 +50,11 @@ Use when the h5ad files come from fundamentally different sample types (e.g., di
 - **Output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Directory on Latch where the merged h5ad will be saved.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text. Render it in the same
+    message as the other parameters you are collecting in chat, so their reply is the turn in which
+    you read its `.value`. If the user chose an output directory earlier in this session, prefill it
+    as the picker's `default=` and name it in chat; if not, render the picker empty and offer no
+    default. See "Asking for an output directory" in `SKILL.md`.
 
 - **Output filename** → `output_h5ad` (`str`, **required**)
   - Name for the merged output file. Must end in `.h5ad`.

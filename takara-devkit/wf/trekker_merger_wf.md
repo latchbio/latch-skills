@@ -19,6 +19,12 @@ Merge Trekker pipeline outputs from multiple single-nuclei reactions into a sing
 - **New merged output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Directory on Latch where the merged results will be saved.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same
+    message as the other parameters you are collecting in chat. Prefill `default=` with a directory
+    the user chose earlier in this session (the Trekker run's own `output_dir` is the obvious
+    candidate) and name it in chat; offer no default if there is none. With one merger run per tile
+    group, each group needs its own directory — render one picker per group, keyed distinctly. See
+    "Asking for an output directory" in `SKILL.md`.
 </parameters>
 
 <outputs>

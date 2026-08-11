@@ -58,11 +58,21 @@ For each candidate, capture: organism, tissue/region, disease/condition, develop
 
 The builder downloads (if a URL), standardizes, curates (drops tiny cell types, caps cells per type), and emits `<run_name>_reference.rds` — a spacexr `Reference` built under the pinned Seurat 4.4.0 stack, so it is guaranteed compatible with RCTD regardless of the original format. That `.rds` becomes `reference_data`. See `wf/rctd_reference_builder_wf.md`.
 
-**Collect `run_name` and `output_directory` for the build in chat, in the same message that presents
-the reference choice.** Do not render a picker for the output directory and then end your turn:
-nothing in Plots can start an agent turn, so the user fills it in, nothing happens, and they
-reasonably conclude you are stuck. This step has already produced that stall. See "Requesting files
-from the user" in `SKILL.md`.
+**Collect `run_name` and `output_directory` for the build in the same message that presents the
+reference choice.** Render a `w_ldata_picker` (`file_type="dir"`) for the output directory — never
+ask for that path as free text alone — and ask for `run_name` in chat alongside it. Presenting the
+candidates in the same message is what makes the picker safe here: the user has to reply to choose a
+reference, and that reply is the turn in which you read the picker's `.value`. Tell them they can
+also just give you the path.
+
+If they already chose an output directory earlier in this session (a Seeker or Trekker run, an
+earlier build), pass it as the picker's `default=` and name it in chat as the one you'll use unless
+they change it. If they haven't, render the picker empty and ask them to pick — do not default to
+`latch:///RCTD_Output` or to the query H5AD's own directory.
+
+What you must not do is render the picker on its own and end your turn: nothing in Plots can start an
+agent turn, so the user fills it in, nothing happens, and they reasonably conclude you are stuck.
+This step has already produced that stall. See "Asking for an output directory" in `SKILL.md`.
 
 **1f. If the build fails, recover — don't stop and don't retry blindly.** A reference the workflow
 cannot use is a normal outcome of picking one off the web, and recovering from it is *your* job: the
@@ -86,8 +96,8 @@ If the user would rather not pursue a reference at all, skip RCTD cleanly per th
 continue at `steps/normalization.md`.
 
 ### Step 2 — Run RCTD
-1. Write the QC-filtered, raw-count AnnData to Latch as `.h5ad` (it must carry spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`).
-2. Launch RCTD with that query and the reference `.rds` per `wf/rctd_wf.md`. Doublet mode is automatic — tell the user, and do not pass a mode parameter.
+1. Write the QC-filtered, raw-count AnnData to Latch as `.h5ad` (it must carry spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`). **Ask where to write it with a `w_ldata_picker` (`file_type="dir"`), prefilled with the directory the reference build used** — that is a directory the user chose, so offering it as the default is right; inventing one is not. See "Asking for an output directory" in `SKILL.md`.
+2. Launch RCTD with that query and the reference `.rds` per `wf/rctd_wf.md`. Doublet mode is automatic — tell the user, and do not pass a mode parameter. Offer the same directory again for RCTD's own `output_directory`, in a picker, and let them change it.
 
 **Chain the handoff; do not re-ask.** The builder's `reference_data` path is fully determined by the
 parameters you already passed it — `<output_directory>/<run_name>/<run_name>_reference.rds` — so
@@ -122,6 +132,7 @@ These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `
 - For Seeker data, RCTD was **recommended** — not merely offered — immediately after QC + Filtering and before any normalization, and the same message gave the user an explicit way to skip it.
 - If the user skipped RCTD, the workflow continued straight to normalization without re-pitching it.
 - The object handed to RCTD holds QC-filtered raw counts in `.X` (normalization had not yet run).
+- Every output location in this step — the reference build's `output_directory`, the query `.h5ad`, and RCTD's own `output_directory` — was chosen by the user in a `w_ldata_picker`, or reused from a directory they had already chosen and named back to them in chat. None was a guessed path or a workflow's built-in default, and no picker was left as the only thing pending at the end of a turn.
 - The chosen reference's organism matches the data; its tissue, condition, and (if relevant) developmental stage are a sensible match for the sample.
 - If the reference build failed, its `<run_name>_reference_FAILED.txt` was read and its cause was reported to the user in plain language — and the user was **asked** whether to find a different reference, rather than left with an unexplained failure or a blind relaunch of the same parameters.
 - Reference and query share a non-zero set of genes (RCTD errors on zero overlap — the builder reports the reference gene count; sanity-check it against the query's genes before launching).

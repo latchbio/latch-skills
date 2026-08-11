@@ -16,7 +16,7 @@ Provide **exactly one** reference source (`reference_file` or `reference_url`):
 - **`cell_type_column`** (`str`, default `"cell_type"`) — The cell-type column: an `.obs` column for `.h5ad`, or a `meta.data` column for a Seurat `.rds`. CELLxGENE uses `cell_type`. If it isn't found, the builder logs the available columns so you can correct it and relaunch.
 - **`max_cells_per_type`** (`int`, default `1000`) — Per-cell-type downsample cap (controls RCTD memory). Each type is randomly downsampled to at most this many cells.
 - **`min_cells_per_type`** (`int`, default `25`) — Cell types with fewer cells than this are dropped (RCTD needs a minimum per type).
-- **`output_directory`** (`LatchOutputDir`, **required**) — Latch directory for outputs. The reference lands in `output_directory/<run_name>/`.
+- **`output_directory`** (`LatchOutputDir`, **required**) — Latch directory for outputs. The reference lands in `output_directory/<run_name>/`. Collect it with a `w_ldata_picker` (`file_type="dir"`), prefilled with a directory the user chose earlier in the session if there is one — see `<instructions>` and "Asking for an output directory" in `SKILL.md`.
 
 Notes:
 - The file type is detected by extension: `.h5ad`/`.h5` → AnnData path (standardized in Python, then built in R); `.rds` → read directly in R (a spacexr `Reference` is re-validated; a Seurat object has its counts + `cell_type_column` extracted). A Seurat **v5** `.rds` cannot be read by SeuratObject 4.1.4 — if that fails, ask the user for a `.h5ad` instead — via a `w_ldata_picker`, the attach button in the Agent interface, or its Latch Data path.
@@ -42,13 +42,17 @@ Confirm the resolved source and cell-type column with the user before launching,
 After it completes, hand `<run_name>_reference.rds` to `wf/rctd_wf.md` as `reference_data` — derive
 that path from the parameters you already have rather than asking the user for it again.
 
-**Collect `output_directory` and `run_name` in chat, before you generate anything.** Do not render a
-picker for them and then end your turn — nothing in Plots can start an agent turn, so the user fills
-the picker in, nothing happens, and after a few minutes they conclude you are stuck and interrupt
-you. That is a real failure this step has produced. If you do render a picker (because the user
-prefers browsing to typing), put it in the **same cell** as the launch button so their selection arms
-a click rather than waiting on a turn that will never come. See "Requesting files from the user" in
-`SKILL.md`.
+**Have `output_directory` and `run_name` before you generate anything.** Ask for the output directory
+with a `w_ldata_picker` (`file_type="dir"`) — never as free text alone — rendered back in
+`steps/rctd.md` step 1, in the same message that presents the reference candidates. The user's reply
+choosing a reference is the turn in which you read the picker's `.value`, so nothing is left waiting
+on a widget: render the picker on its own with "let me know when you've picked one" and you get the
+stall this step has already produced, because nothing in Plots can start an agent turn. Prefill
+`default=` with a directory the user chose earlier in the session if there is one, and offer no
+default if there isn't. See "Asking for an output directory" in `SKILL.md`.
+
+By the time you generate the two cells below, `OUTPUT_DIR` is a resolved `latch://` string — from the
+picker or from the user's message — not a placeholder to be filled in later.
 
 > ⚠️ Confirm the registered `wf_name`/`version` against the Latch workflows registry before launching (the reference-builder is a separate registration from RCTD). Do that lookup in cell 1, which cannot launch anything.
 
@@ -67,7 +71,8 @@ WF_NAME = "wf.__init__.rctd_reference_builder_wf"  # confirm against the registe
 VERSION = "0.3.0-329a99"                           # confirm against the registered version;
                                                    # 0.3.0+ writes the failure report below
 RUN_NAME = ""                                      # required — no spaces
-OUTPUT_DIR = "latch://..."                         # required — from the user, collected in chat
+OUTPUT_DIR = "latch://..."                         # required — the directory the user selected in the
+                                                   # output-directory picker (or gave you in chat)
 
 params = {
     "run_name": RUN_NAME,

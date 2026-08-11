@@ -10,6 +10,10 @@ Demultiplex a pooled pair of TrekkerQ_P (Parse Evercode) FASTQ files into per-gr
 - **Output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Destination directory on Latch where demultiplexed files will be written.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same
+    message as the other parameters you are collecting in chat. Prefill `default=` with a directory
+    the user chose earlier in this session and name it in chat; offer no default if there is none.
+    See "Asking for an output directory" in `SKILL.md`.
 - **Chemistry** → `chemistry` (`str`, **required**)
   - The Parse Evercode chemistry version used. Ask the user and map to the correct string:
 

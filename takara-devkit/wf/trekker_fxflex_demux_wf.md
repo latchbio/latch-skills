@@ -44,6 +44,10 @@ Once chemistry (and the optional labeling approach) are resolved, proceed to col
 - **Output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Destination directory on Latch where demultiplexed files will be written.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same
+    message as the other parameters you are collecting in chat. Prefill `default=` with a directory
+    the user chose earlier in this session and name it in chat; offer no default if there is none.
+    See "Asking for an output directory" in `SKILL.md`.
 - **Sample labels** → `sample_labels` (`List[LabelInfo]`, optional)
   - A samplesheet with one row per sample, entered manually. Each row (`LabelInfo`) maps a **sample name** to the **barcode ID** that sample was multiplexed under.
   - Optional: leave empty to name outputs by their barcode ID, or supply a `sample_manifest` file instead.

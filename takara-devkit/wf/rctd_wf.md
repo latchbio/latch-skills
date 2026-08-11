@@ -12,7 +12,7 @@ This workflow is the deconvolution engine. Acquiring the reference `.rds` (eithe
 - **`run_name`** (`str`, **required**) — Names the run and the output subdirectory. No spaces. Must be provided — do not use a placeholder.
 - **`input_data`** (`LatchFile`, **required**) — The **query** spatial dataset: the QC-filtered AnnData (raw counts in `.X`, spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`) written to Latch as `.h5ad`. A Seurat `.rds` with an `RNA` assay and a `SPATIAL` reduction is also accepted. Use the **QC-filtered, pre-normalization** object — RCTD models raw counts.
 - **`reference_data`** (`LatchFile`, **required**) — The single-cell reference `.rds`: a spacexr `Reference` object (preferred — what `wf/rctd_reference_builder_wf.md` produces) or a Seurat object with a `cell_type` metadata column. Mouse Ensembl gene IDs are auto-mapped to symbols.
-- **`output_directory`** (`LatchOutputDir`, **required**) — Latch directory for outputs. Results land in `output_directory/<run_name>/`. Default `latch:///RCTD_Output`; ask the user for an explicit path.
+- **`output_directory`** (`LatchOutputDir`, **required**) — Latch directory for outputs. Results land in `output_directory/<run_name>/`. The workflow's own default is `latch:///RCTD_Output`; **never silently accept it.** Ask with a `w_ldata_picker` (`file_type="dir"`), prefilled (`default=`) with the directory the reference build used — the user already chose that one — and let them change it. Render the picker in the same message as the launch confirmation below, so their "ready" is the turn in which you read its `.value`. See "Asking for an output directory" in `SKILL.md`.
 
 Advanced parameters (defaults are tuned for Seeker — only surface them if the user asks):
 
@@ -42,8 +42,11 @@ Written to `output_directory/<run_name>/`:
 </outputs>
 
 <instructions>
-After the reference `.rds` and the QC-filtered query `.h5ad` are both staged on Latch, confirm with the user before launching:
-> "Reference and query are ready. RCTD will run in doublet mode on Latch compute. Let me know when you're ready to start."
+After the reference `.rds` and the QC-filtered query `.h5ad` are both staged on Latch, confirm with the user before launching — and render the output-directory picker in that same message, so the confirmation reply is the turn in which you read it:
+> "Reference and query are ready. RCTD will run in doublet mode on Latch compute. I'll write the
+> results to `latch:///Seeker_Output` — the directory you used for the reference build — unless you
+> pick a different one in the **Output directory** picker, or tell me the path here. Let me know when
+> you're ready to start."
 
 Only generate and execute the code cells once the user confirms.
 
@@ -88,7 +91,8 @@ from latch.types import LatchFile, LatchDir
 WF_NAME = "wf.__init__.rctd_wf"   # confirm against the registered RCTD workflow (see instructions)
 VERSION = "1.0.2-9e8dc3"          # confirm against the registered version
 RUN_NAME = ""                     # required — set by user, no spaces
-OUTPUT_DIR = "latch://..."        # required — set by user
+OUTPUT_DIR = "latch://..."        # required — the directory the user selected in the
+                                  # output-directory picker (or gave you in chat)
 
 params = {
     "run_name": RUN_NAME,

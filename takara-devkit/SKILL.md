@@ -150,6 +150,10 @@ has the check.
 
 ## Requesting files from the user
 
+This section is about **inputs** — a file or directory that already exists and has to be located. For
+the destination results are written to, see "Asking for an output directory" below: the picker is
+mandatory there, and the attach button is not an alternative.
+
 Whenever a step needs a single file or directory the agent does not already have (e.g. a tissue
 image, a reference, an h5ad data file), give the user **both** ways to provide it:
 
@@ -194,6 +198,63 @@ build the full parameter entry widget set **and the launch cell at the same time
 those workflow docs specify. Never withhold the launch cell waiting for the user to confirm
 in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
 start the pipeline.
+
+## Asking for an output directory
+
+Every workflow in `wf/` takes an output directory, and `steps/rctd.md` writes a query `.h5ad` back to
+Latch. **Whenever you need the user to say where results are written, render a `w_ldata_picker`
+(`file_type="dir"`) for it.** Never ask for the destination as free text only. A `latch://` path typed
+from memory is how a run ends up writing into a directory that does not exist, or into last week's
+run directory; a picker only yields places that are actually there.
+
+The picker is required — but it is never the *only* thing you leave the user with, because nothing in
+Plots can start an agent turn. Pair it one of two ways:
+
+- **In a parameter form** (`seeker_pipeline_wf`, `trekker_pipeline_wf`), the picker sits in the
+  parameter cell and the launch button in the next cell reads its `.value`. The selection arms a
+  click the user makes themselves. Nothing waits on you.
+- **In conversation** (`rctd_reference_builder_wf`, `rctd_wf`, the mergers, the demuxes,
+  `fastq_concatenator_wf`), render the picker **in the same message as a question the user must
+  answer in chat anyway** — which reference to use, whether to launch, the `run_name`. Their reply is
+  the turn in which you read the picker's `.value`. Say in that message that they may also just tell
+  you the path; take whichever arrives, and prefer the picker if you get both.
+
+What you must not do is render an output-directory picker, say "let me know when you've picked one",
+and end the turn with nothing else pending. The user selects a directory, nothing happens, and after
+a few minutes they conclude you have hung — this step has already produced that stall.
+
+**Offer a directory the user has already chosen, when there is one.** If they gave an output
+directory earlier in this session for a different process — the Seeker `outdir`, the Trekker
+`output_dir`, the directory an earlier reference build wrote to — offer it as a reuse option rather
+than making them find it again:
+
+```python
+from lplots.widgets.ldata import w_ldata_picker
+
+# `latch:///Seeker_Output` came from the Seeker pipeline launch earlier in this session
+w_output_dir = w_ldata_picker(
+    label="Output directory",
+    file_type="dir",
+    default="latch:///Seeker_Output",   # only ever a directory the user themselves chose
+    key="rctd_output_dir",
+)
+```
+
+and name it in chat, so the prefill is visible to someone who never opens the tab:
+
+> I'll write the reference to `latch:///Seeker_Output` — the directory you used for the Seeker run —
+> unless you pick a different one in the **Output directory** picker in the new tab, or just tell me
+> the path here.
+
+With more than one prior directory, list them in a `w_radio_group` above the picker, with a final
+option that means "somewhere else" and leaves the picker to decide.
+
+**When no output directory has been specified yet, offer no options at all.** Render the bare picker
+with no `default`, and ask the user to select one. Do not invent a plausible path, do not fall back
+to a workflow's own built-in default (`latch:///RCTD_Output` and friends), and do not quietly reuse
+the source H5AD's directory — none of those were chosen by the user, and a wrong default they do not
+notice is worse than an empty field. The attach button, which is a real alternative for *input*
+files, is not one here: it uploads a file, it does not name a destination.
 
 ## Telling the user where results appeared
 

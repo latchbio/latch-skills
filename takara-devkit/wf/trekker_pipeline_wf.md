@@ -170,6 +170,11 @@ Rules for the launch cell:
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
   the cell before the launch call is reached, which removes the button.
+- **The output directory is a picker like any other, and never a guess.** If the user named an output
+  directory earlier in this session, pass it as `w_output_dir`'s `default=` and say so in chat; if
+  they did not, leave `default` unset rather than filling in a plausible path. With multiple
+  reactions, each gets its own picker (and its own key) — reactions may share a directory, but that
+  is the user's call to make, not yours. See "Asking for an output directory" in `SKILL.md`.
 - Include the `w_text_output(...)` long-running notice inside `if execution is not None:`. The click
   lands after your turn ends, so a chat message you would "display after launching" never happens —
   the cell has to render it. See `<long_running_guidance>`.
@@ -234,6 +239,7 @@ w_sc_outdir = w_ldata_picker(
     label="Single-cell platform output directory (sc_outdir)", file_type="dir",
     key="trekker_sc_outdir",
 )
+# add default="latch://..." only when the user has already chosen an output directory this session
 w_output_dir = w_ldata_picker(
     label="Output directory", file_type="dir", key="trekker_output_dir",
 )
