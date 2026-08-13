@@ -28,6 +28,10 @@ Applies to every step in every plan below: each analysis opens in its **own tab*
 notebook does not switch to it. Whenever a step produces a tab, say so in your chat message — name
 the tab and say what is in it — before moving on. See "Telling the user where results appeared" in
 `SKILL.md` for the wording, and each step doc's `<new_tab_notice>` for a step-specific example.
+
+A step that renders more than one plot into its tab must give each figure its own variable. A shared
+`fig` makes every plot in the tab show the last one, with no error — see "Rendering figures — one
+variable per plot" in `SKILL.md`.
 </pre_analysis_step>
 
 <plan id="primary_analysis" label="Primary Analysis">
@@ -58,4 +62,6 @@ Step 3b (RCTD) is a **Seeker-only** reference-based track that runs on the QC-fi
 </plan>
 
 <self_eval_criteria>
+- No tab renders two plots with identical content — every `w_plot` in a multi-plot tab draws a
+  distinctly named figure variable, and no figure is bound to `fig`
 </self_eval_criteria>

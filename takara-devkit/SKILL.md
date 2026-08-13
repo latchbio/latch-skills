@@ -292,6 +292,42 @@ This applies to `steps/` analyses and to the `wf/` parameter-entry, launch, and 
 alike. It matters most for anything the user must **click** — a launch button or a resume button
 sitting in an unopened tab is the same as no button at all.
 
+## Rendering figures — one variable per plot
+
+A tab that renders more than one plot — QC (histogram, removed-bead spatial plot, knee plot),
+dimensionality reduction (scree plot, one UMAP per parameter set), background removal (density
+histogram, before/after spatial), cell typing (dot plot plus one violin per cell type) — will show
+the **same figure in every slot** if those figures share a variable name.
+
+`w_plot` takes its `source` as a named global and resolves it when the tab renders, not when the
+call runs. Two `fig = ...` bindings in one cell leave a single object under that name, so both
+widgets draw it. Nothing errors: the tab comes up with the right number of plots under the right
+labels, all showing the last one. It reads as an analysis problem, not a naming one.
+
+- **Never bind a figure to `fig`.** Every figure gets its own descriptive global —
+  `fig_qc_genes_hist`, `fig_qc_genes_spatial`, `fig_umi_knee`, `fig_dimred_scree`, `fig_umap_n40`.
+  One name, one figure, one `w_plot`, for the life of the notebook. Do not rebind a figure name in a
+  later cell either — a re-run of the earlier cell will then redraw the wrong plot.
+- **Capture the figure explicitly.** `fig_x, ax = plt.subplots()`, draw on `ax`, then
+  `w_plot(source=fig_x)`. Bare `plt.scatter(...)`, `series.hist(...)`, and `plt.show()` draw into
+  implicit global state — there is nothing to hand `w_plot`, and whatever the next cell draws lands
+  on the same canvas. For scanpy dot and violin plots pass `return_fig=True, show=False`, call
+  `.show()`, then take `.fig`.
+- **No loops over plots, and no `globals()`.** Where a step wants one plot per cluster or per cell
+  type (`steps/cell_typing.md`, `steps/diff_gene_expression.md`), write the names out explicitly or
+  put every panel into one figure with subplots. Dynamic names are the same collision with more
+  indirection.
+- **Give each `w_plot` an explicit unique `key`**, the way the input widgets already do
+  (`key="qc_min_genes"` in `steps/qc.md`), so widget identity does not ride on call order.
+
+**This does not conflict with "one cutoff variable per metric" in `steps/qc.md`.** That rule governs
+values feeding a *computation* — one `min_genes`, one `removed` mask, so the plot and the summary
+cannot disagree. This one governs objects feeding a *widget*. Share the scalar, never share the
+figure: a single QC cell holds one cutoff variable and three separately named figures.
+
+The same hazard applies to any object handed to a widget — a `df` reused across two `w_table` calls,
+or an `adata` rebound between two `w_h5` viewers, collapses the same way.
+
 ## Launching a workflow at most once
 
 A Seeker test session started **two RCTD deconvolutions ten seconds apart**, both of which ran to
@@ -414,3 +450,7 @@ If `latch-workflows`, `latch-plots-ui`, or `latch-data-access` are available, pr
 - Latch Data path handling
 
 If those sibling skills are not available, use the local `wf/`, `steps/`, and `README.md` docs directly.
+
+"Rendering figures — one variable per plot" above is **local and unconditional** — it holds whether
+or not `latch-plots-ui` loaded, and the local `steps/` docs do not restate it. When `latch-plots-ui`
+is available it remains the reference for `w_plot` arguments and the scanpy `.fig` conversion.
