@@ -32,7 +32,8 @@ For the "total UMIs" method specifically, also generate a knee plot:
 - Y-axis range: explicitly set to `(adata.obs['total_counts'].min(), adata.obs['total_counts'].max())` — not a library default
 - The knee/inflection point visually indicates a natural UMI threshold separating real beads from empty droplets/background
 
-Start with "genes per bead" and go one at a time.
+Start with "genes per bead" and go one at a time. Once all three cutoffs are set and the filter is
+applied, close the step with the passed/failed spatial pair — see "The final plot" below.
 
 Always use text input widgets for precise viewing and manipulation of threshold values (instead of eg. sliders)
 
@@ -112,6 +113,90 @@ count ("at 150 genes per bead that removes 12,431 beads — the current numbers 
 **QC — genes per bead** tab"), so a bead count that has since been superseded is self-dating rather
 than authoritative.
 
+### Re-render each metric's plots with the value used in the final calculation
+
+The summary rule above keeps the *text* honest. The **figures** need the same treatment, and they
+fail the other way round: the final filter runs on the user's custom cutoff while the histogram,
+the removed-beads spatial plot and the knee plot still show the default. Nothing errors — the tab
+comes up with the right plots under the right labels, all describing a cutoff nobody chose.
+
+Once the cutoffs are settled — and again whenever the user changes one — **re-run each metric's cell
+so its figures are drawn from the current widget value**, then say in chat which tab now holds the
+updated plots (see `<new_tab_notice>`).
+
+Every cutoff that reaches a figure is interpolated from the same variable the final calculation
+uses, never re-typed:
+
+- histogram threshold line — `ax.axvline(min_genes, ...)`, not `axvline(100)` or
+  `axvline(DEFAULT_MIN_GENES)`
+- knee plot cutoff line — `ax.axhline(min_umis, ...)`
+- the removed-beads spatial plot — the same `removed` mask the summary counts, not a second
+  comparison written out again
+- plot titles and annotations — f-strings off the cutoff variable
+  (`ax.set_title(f"Genes per bead — cutoff {min_genes:g}")`)
+- a sweep of candidate cutoffs (method step 2 above) is centered on the current value, not a fixed
+  hardcoded set
+
+The default constant appears in exactly two places: the widget's `default=` and the parse fallback
+in the `try/except`. Anywhere else it is the bug.
+
+The figure and its `w_plot(...)` call live in the **same cell that reads `.value`**, so the
+re-render happens on its own — no figure built in an earlier setup cell, and no drawing onto an axes
+left over from a previous run. Both would keep rendering the first pass forever, silently. Figure
+naming follows "Rendering figures — one variable per plot" in `SKILL.md`.
+
+### The final plot — QC-passed and QC-failed beads, side by side
+
+When filtering is applied, the closing spatial plot must show **both** sides of the cut: the beads
+that passed QC *and* the beads it removed, as two panels of one figure. A retained-beads plot on its
+own cannot answer the question the user is actually asking — whether the thresholds ate real tissue.
+Intact-looking morphology in the passed panel says nothing; the damage is only visible in what was
+taken out.
+
+One figure, two axes, one `w_plot`:
+
+```python
+import numpy as np
+
+keep = (
+    (adata.obs["n_genes_by_counts"] >= min_genes)
+    & (adata.obs["pct_counts_mt"] <= max_mito)
+    & (adata.obs["total_counts"] >= min_umis)
+).to_numpy()          # the same mask the filter itself uses — never a second set of comparisons
+
+xy = np.asarray(adata.obsm["spatial"])            # Takara spatial coords live in obsm, not obs
+
+fig_qc_final_spatial, (ax_pass, ax_fail) = plt.subplots(
+    1, 2, figsize=(14, 6), sharex=True, sharey=True,
+)
+
+ax_pass.scatter(xy[keep, 0], xy[keep, 1], s=1)
+ax_pass.set_aspect("equal")
+ax_pass.set_title(f"QC passed — {keep.sum():,} beads ({keep.mean():.1%})")
+
+ax_fail.scatter(xy[~keep, 0], xy[~keep, 1], s=1)  # same marker size as the passed panel
+ax_fail.set_aspect("equal")
+ax_fail.set_title(f"QC failed — {(~keep).sum():,} beads ({(~keep).mean():.1%})")
+
+w_plot(label="QC result — passed vs failed", source=fig_qc_final_spatial, key="qc_final_spatial")
+```
+
+Three things make the comparison readable, and all three are easy to lose:
+
+- **Both panels on the same axes limits and the same aspect.** Left to itself matplotlib autoscales
+  each panel to its own points, so the failed beads render in a different coordinate frame at a
+  different zoom — the two pictures then cannot be laid over each other by eye, which is the entire
+  point. `sharex=True, sharey=True` plus `set_aspect("equal")`, or set the limits explicitly from the
+  full object.
+- **Both panels from one mask.** `keep` and `~keep` — so the two panels always partition the same
+  bead set and their counts add up to `len(adata)`.
+- **Counts interpolated into the titles**, per the re-render rule above, so the panel labels move
+  with the cutoffs.
+
+Tell the user what to look for: the failed panel should read as background, edges and sparse
+scatter. If it reproduces tissue structure — a recognizable region, a layer, a whole lobe — the
+thresholds are removing real biology and should be relaxed, whatever the histograms suggested.
+
 ### Hand-off — Seeker: recommend RCTD before normalization
 
 Once filtering is applied, **do not go straight to `steps/normalization.md` on Seeker data.** The
@@ -141,6 +226,10 @@ Permissive sanity checks (should hold true across tissue/disease):
 - The user was told, in chat, which tab holds the histograms and the threshold input widgets
 - Editing the cutoff box updates the **summary of the final calculation** (cutoff value, beads removed, beads retained) as well as the removed-beads plot — check by changing the value and confirming the summary no longer reports the default of 100
 - Each metric's cutoff exists as exactly one variable, derived from the widget's `.value` in the same cell as the plots and the summary — no hardcoded threshold literal outside the widget's `default`, and no summary cell separate from the widget cell
+- Each metric's histogram threshold line, removed-beads spatial plot and knee-plot line show the cutoff that fed the final calculation — check by setting genes per bead well away from 100 and confirming no plot still draws the default
+- No numeric cutoff literal or default constant appears in any plotting call; every cutoff drawn is interpolated from the widget-derived variable
+- The final spatial plot shows QC-passed **and** QC-failed beads as two panels of one figure, on shared axis limits and equal aspect, with per-panel bead counts in the titles — a retained-beads-only plot does not satisfy this step
+- The user was told what the failed panel means: background and edges is expected, recognizable tissue structure means the thresholds are too aggressive
 - For Seeker data, RCTD was recommended (with an explicit skip option) after filtering and before normalization began — see `steps/rctd.md`
 </self_eval_criteria>
 
@@ -154,5 +243,7 @@ results appeared" in `SKILL.md`:
 > bead** — click it in the notebook and type a cutoff into the box. The plot and the summary
 > underneath it both update as you type, so you can try a few values without messaging me.
 
-Repeat this for each of the three metrics if each opens its own tab.
+Repeat this for each of the three metrics if each opens its own tab, and again for the final
+passed/failed spatial pair once filtering is applied — name that tab too, and say the right-hand
+panel is the one to check for lost morphology.
 </new_tab_notice>
