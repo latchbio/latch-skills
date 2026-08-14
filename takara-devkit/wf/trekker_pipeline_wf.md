@@ -128,18 +128,44 @@ Verified against the deployment source (`latch_platform/curiotrekker`), not infe
     ├── log/
     └── trekker_<sample_id>/
         ├── output/                       # ← the results you want
-        │   ├── <sample_id>_Trekker_Report.html     # the QC report
+        │   ├── <sample_id>_Trekker_Report.html                  # the QC report
+        │   ├── <sample_id>_ConfPositioned_anndata_matched.h5ad  # ← secondary analysis input
+        │   ├── <sample_id>_ConfPositioned_seurat_spatial.rds
         │   ├── <sample_id>_summary_metrics.csv
         │   ├── <sample_id>_variable_features_clusters.csv
         │   ├── <sample_id>_variable_features_spatial_moransi.txt
-        │   ├── <sample_id>_ConfPositioned_seurat_spatial.rds
         │   └── intermediates/
+        │       ├── <sample_id>_anndata_matched.h5ad             # NOT for secondary analysis
+        │       ├── <sample_id>_Positioned_anndata_matched.h5ad  # NOT for secondary analysis
+        │       ├── <sample_id>_seurat_spatial.rds
+        │       └── <sample_id>_Positioned_seurat_spatial.rds
         └── misc/<tile_id>/
 ```
 
 **Report filename.** `genreport.R:22-27` emits `<sample_id>_Trekker_Report.html` for the standard
 report and `<sample_id>_Report.html` for the extended one — so match on the `_Report.html` **suffix**
 rather than an exact name, and prefer the `_Trekker_` variant.
+
+**H5AD filename — Trekker writes three, and only one is the right input.**
+`trekker-v1.4.0/common/analysis.R:604-606` (the tree that actually runs —
+`wf/nuclei_locater_docker.sh:24` pins `SCRIPT_DIR="/root/trekker-v1.4.0"`) converts three Seurat
+objects with `sceasy::convertFormat`, in ascending order of filtering:
+
+| File | Written to | Seurat object |
+|---|---|---|
+| `<sample_id>_anndata_matched.h5ad` | `output/intermediates/` | all matched beads |
+| `<sample_id>_Positioned_anndata_matched.h5ad` | `output/intermediates/` | positioned beads |
+| `<sample_id>_ConfPositioned_anndata_matched.h5ad` | `output/` | **confidently** positioned beads |
+
+`analysis.R:414` sets `intermediates_dir <- file.path(outdir, "intermediates")`, and `outdir` is
+argument 6 — `TREKKEROUT_MAIN`, i.e. `output/` (`nuclei_locater_docker.sh:145`). So the
+`ConfPositioned` h5ad sits in `output/` beside the `.rds` of the same name, and is the one to hand to
+secondary analysis; the other two are intermediates.
+
+This matters because a bare `_anndata_matched.h5ad` suffix search matches **all three**. Rank as the
+report does: prefer the `_ConfPositioned_` variant, and prefer a hit in `output/` over one under
+`intermediates/`. Loading an intermediate silently analyses the wrong bead set — no error, just
+different results.
 
 Two things here are easy to get wrong and have already caused a failed run: the
 `<analysis_date>_<sample_id>` directory sits between `output_dir` and everything else, and the report
@@ -352,25 +378,25 @@ if resume.value and out_root is None:
     )
 elif resume.value:
 
-    def _reports(root: LPath, depth: int) -> list[LPath]:
-        """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""
+    def _by_suffix(root: LPath, suffix: str, depth: int) -> list[LPath]:
+        """Every file ending in `suffix` at or below root. Bounded; tolerates files and missing dirs."""
         found: list[LPath] = []
         try:
             entries = list(root.iterdir())
         except Exception:          # not a directory, or not created yet
             return found
         for p in entries:
-            name = p.path.rsplit("/", 1)[-1]
-            if name.endswith("_Report.html"):
+            if p.path.rsplit("/", 1)[-1].endswith(suffix):
                 found.append(p)
             elif depth > 1:
-                found.extend(_reports(p, depth - 1))
+                found.extend(_by_suffix(p, suffix, depth - 1))
         return found
 
     # Fast path: the layout the deployed workflow actually writes (see <outputs>). Falls back to a
     # bounded search from output_dir, so a layout change costs speed, not correctness.
+    # Both the report and the h5ad live in this same output/ directory.
     known = LPath(f"{out_root.path}/{date_v}_{sample_v}/trekker_{sample_v}/output")
-    hits = _reports(known, 1) or _reports(out_root, 6)
+    hits = _by_suffix(known, "_Report.html", 1) or _by_suffix(out_root, "_Report.html", 6)
 
     # Prefer this sample's report, and the standard "_Trekker_Report.html" over the extended one.
     # Rank on the FILENAME, not the full path — the run directory itself usually contains the
@@ -381,6 +407,30 @@ elif resume.value:
 
     hits.sort(key=_rank)
     report = hits[0] if hits else None
+
+    # The h5ad for secondary analysis. Located here, next to the report, because this cell's output
+    # is the ONLY record of its location that survives a pod restart — the launch cell binds no
+    # execution result. See <resuming>.
+    #
+    # Trekker writes THREE *_anndata_matched.h5ad files and only the _ConfPositioned_ one in
+    # output/ is the right input; the other two are under output/intermediates/ and hold
+    # less-filtered bead sets (see <outputs>). Rank both ways — an intermediate loads without
+    # error and silently analyses the wrong beads.
+    h5_hits = (
+        _by_suffix(known, "_anndata_matched.h5ad", 1)
+        or _by_suffix(out_root, "_anndata_matched.h5ad", 6)
+    )
+
+    def _rank_h5(p: LPath) -> tuple[bool, bool, bool]:
+        name = p.path.rsplit("/", 1)[-1]
+        return (
+            "_ConfPositioned_anndata_matched.h5ad" not in name,   # the confidently-positioned one
+            "/intermediates/" in p.path,                          # never an intermediate
+            not name.startswith(f"{sample_v}_"),                  # this sample's
+        )
+
+    h5_hits.sort(key=_rank_h5)
+    h5ad = h5_hits[0] if h5_hits else None
 
     if report is None:
         w_text_output(
@@ -409,11 +459,23 @@ elif resume.value:
             except Exception as e:
                 note = f"\n\n_Images were not optimized ({e!r}), so the report may load slowly._"
 
+        # Printing the h5ad path is not decoration — it is how the path reaches the next step.
+        # Keep it in the same message as the report link so it is on screen whenever the user
+        # asks to continue.
+        if h5ad is not None:
+            h5ad_line = f"Counts matrix for secondary analysis: `{h5ad.path}`\n\n"
+        else:
+            h5ad_line = (
+                "_No `*_anndata_matched.h5ad` found under the run directory — if you continue to "
+                "secondary analysis I'll ask you where it is._\n\n"
+            )
+
         w_text_output(
             content=(
                 "**Trekker pipeline complete.** "
                 f"[Open the QC report](https://console.latch.bio/data/{link.node_id()})\n\n"
-                "Message me when you've looked it over and we'll continue with secondary analysis."
+                + h5ad_line
+                + "Message me when you've looked it over and we'll continue with secondary analysis."
                 + note
             ),
             appearance={"message_box": "success"},
@@ -435,8 +497,15 @@ doc — paste it into the cell above the button. Four notes:
   the deployed workflow actually writes; the fast path uses it and the bounded search is the safety
   net. Matching an exact filename you assembled yourself is what produced
   "No `continue_3_Report.html` under .../continue_3/continue_3" — two wrong guesses at once.
-- If `iterdir()` is unavailable in the runtime, replace `_reports` with `w_ldata_browser(dir=out_root)`
-  and have the user select the report; everything downstream is unchanged.
+- **This cell must locate the h5ad, not just the report** — and the *right* h5ad. The launch cell no
+  longer binds an execution result, so nothing else in the notebook knows where
+  `<sample_id>_ConfPositioned_anndata_matched.h5ad` is. Printing its path here is what lets
+  `steps/data_loading.md` skip its "ask the user" branch after a pod restart. Rank the
+  `_ConfPositioned_` variant first and demote anything under `intermediates/`; the wrong pick
+  analyses a less-filtered bead set with no error to show for it.
+- If `iterdir()` is unavailable in the runtime, replace `_by_suffix` with
+  `w_ldata_browser(dir=out_root)` and have the user select the files; everything downstream is
+  unchanged.
 
 **Multiple reactions:** render **one resume button per reaction**, each with its own
 `key=f"trekker_resume_{i}"`, label `f"Show my QC report — reaction {i}"`, and that reaction's own
@@ -558,6 +627,15 @@ anything else — treat that as a resume signal and check Latch Data *before* an
   click the button they just bypassed — same steps as cell 3, then continue to
   `steps/view_report.md`'s follow-up question. Do not ask the user to re-confirm that the pipeline
   finished.
+- **Never ask the user where the h5ad is.** You launched this run, so its location is derivable:
+  `<output_dir>/<analysis_date>_<sample_id>/trekker_<sample_id>/output/<sample_id>_ConfPositioned_anndata_matched.h5ad`,
+  with the parameters still in the widgets (`w_output_dir`, `w_analysis_date`, `w_sample_id` — they
+  persist by `key` across a pod restart) and cell 3's rendered output as a second source. Find it the
+  same way cell 3 does — fast path, then a bounded `_anndata_matched.h5ad` suffix search ranked to
+  prefer `_ConfPositioned_` and reject `intermediates/` — and hand the resulting `LPath` straight to
+  `steps/data_loading.md` step 1b. Fall back to the picker in step 1a **only** when that search
+  genuinely comes up empty, and say so when you do, rather than asking as though you never had the
+  information.
 </resuming>
 
 <takara_lib_import>

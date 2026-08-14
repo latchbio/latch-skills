@@ -63,17 +63,40 @@ Only proceed to collect Seeker pipeline parameters after this is resolved and an
 </parameters>
 
 <outputs>
-Verified against the deployment source (`latch_platform/curioseeker`), not inferred. The entrypoint
-rewrites `outdir` to `f"{outdir.remote_path}/{execution_name}"` before handing it to Nextflow
-(`wf/entrypoint_curio.py:226`), so **every result lands under**:
+Verified against the deployment source (`latch_platform/curioseeker`, `version` = 0.3.6), not
+inferred. The entrypoint rewrites `outdir` to `f"{outdir.remote_path}/{execution_name}"` before
+handing it to Nextflow (`wf/entrypoint_curio.py:226`), and every secondary module publishes to
+`"${params.outdir}/OUTPUT/${meta.id}"` where `meta.id` is the samplesheet's `sample` column
+(`subworkflows/local/input_check.nf:79`). So the results land at:
 
 ```
 <outdir>/<execution_name>/
+└── OUTPUT/
+    └── <sample>/
+        ├── <sample>_anndata.h5ad                        # ← secondary analysis input
+        ├── <sample>_Report.html                         # ← the QC report
+        ├── <sample>_seurat.rds
+        ├── <sample>_Metrics.csv
+        ├── <sample>_cluster_assignment.txt
+        ├── <sample>_variable_features_clusters.txt
+        └── <sample>_variable_features_spatial_moransi.txt
 ```
 
-The layout beneath that is nf-core `publishDir`, not something to assume. The QC report is named
-`<sample>_Report.html` (`modules/local/secondary/genreport.nf:23`, `bin/genreport.R:17`) — match on the
-`_Report.html` suffix and search down from the run directory rather than constructing a full path.
+The two files this skill needs, and the modules that emit them:
+
+- **`<sample>_anndata.h5ad`** — the AnnData the whole Secondary Analysis plan runs on, written by
+  `sceasy::convertFormat` at the end of `bin/analysis.R:104` and published by
+  `modules/local/secondary/analysis.nf:2,20`. **This is the file `steps/data_loading.md` loads.**
+- **`<sample>_Report.html`** — the QC report (`modules/local/secondary/genreport.nf:2,23`,
+  `bin/genreport.R:17`).
+
+The generic nf-core `publishDir` in `conf/modules.config` — which would have placed outputs in
+per-process directories — is **not** in effect: its `includeConfig` is commented out
+(`nextflow.config:269`). The `OUTPUT/<sample>/` layout above is the one that runs.
+
+Even so, **use the layout as a fast path and search by suffix as the fallback** (`_anndata.h5ad`,
+`_Report.html`), anchored at the run directory. A constructed path that is wrong reports "the
+pipeline hasn't finished" for a run that succeeded.
 </outputs>
 
 <instructions>
@@ -316,7 +339,8 @@ resume = w_button(label="Show my QC report", key="seeker_resume")
 # Re-derived from the widgets, not from the launch cell's variables. Picker values are LPath or
 # None, and after a pod restart the parameter cell may not have been re-run at all — so never call
 # .path unguarded (same rule as the launch cell).
-# The task nests everything under <outdir>/<execution_name>/ — see <outputs>.
+# The task nests everything under <outdir>/<execution_name>/, and the secondary modules publish to
+# OUTPUT/<sample>/ beneath that — see <outputs>.
 try:
     run_dir = LPath(f"{w_outdir.value.path.rstrip('/')}/{w_execution_name.value or ''}")
     sample_v = w_sample.value or ""
@@ -335,28 +359,41 @@ if resume.value and run_dir is None:
     )
 elif resume.value:
 
-    def _reports(root: LPath, depth: int) -> list[LPath]:
-        """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""
+    def _by_suffix(root: LPath, suffix: str, depth: int) -> list[LPath]:
+        """Every file ending in `suffix` at or below root. Bounded; tolerates files and missing dirs."""
         found: list[LPath] = []
         try:
             entries = list(root.iterdir())
         except Exception:          # not a directory, or not created yet
             return found
         for p in entries:
-            name = p.path.rsplit("/", 1)[-1]
-            if name.endswith("_Report.html"):
+            if p.path.rsplit("/", 1)[-1].endswith(suffix):
                 found.append(p)
             elif depth > 1:
-                found.extend(_reports(p, depth - 1))
+                found.extend(_by_suffix(p, suffix, depth - 1))
         return found
 
-    # Search rather than construct a filename: nf-core decides the publish subdirectory, so the
-    # report's depth under the run directory is not something to assume.
-    # Rank on the FILENAME, not the full path — the run directory itself often contains the sample
-    # name, so matching on the path makes every candidate tie and another sample's report can win.
-    hits = _reports(run_dir, 6)
-    hits.sort(key=lambda p: not p.path.rsplit("/", 1)[-1].startswith(f"{sample_v}_"))
-    report = hits[0] if hits else None
+    # Fast path: the directory the deployed workflow actually publishes to (see <outputs>).
+    # Falls back to a bounded search from the run directory, so a layout change costs speed,
+    # not correctness. Both files land in the same directory, so one fast path serves both.
+    known = LPath(f"{run_dir.path}/OUTPUT/{sample_v}") if sample_v else run_dir
+
+    def _locate(suffix: str) -> LPath | None:
+        hits = _by_suffix(known, suffix, 1) or _by_suffix(run_dir, suffix, 6)
+        # Rank on the FILENAME, not the full path — the run directory itself often contains the
+        # sample name, so matching on the path makes every candidate tie and another sample's
+        # file can win.
+        hits.sort(key=lambda p: not p.path.rsplit("/", 1)[-1].startswith(f"{sample_v}_"))
+        return hits[0] if hits else None
+
+    report = _locate("_Report.html")
+
+    # Located here, next to the report, for one reason: this cell's output is the ONLY record of
+    # the h5ad's location that survives a pod restart. The launch cell binds no execution result,
+    # so if this path is not printed, the agent has nothing to derive it from when the user comes
+    # back for secondary analysis — and steps/data_loading.md then has to ask for it. See
+    # <resuming>.
+    h5ad = _locate("_anndata.h5ad")
 
     if report is None:
         w_text_output(
@@ -385,11 +422,23 @@ elif resume.value:
             except Exception as e:
                 note = f"\n\n_Images were not optimized ({e!r}), so the report may load slowly._"
 
+        # Printing the h5ad path is not decoration — it is how the path reaches the next step.
+        # Keep it in the same message as the report link so it is on screen whenever the user
+        # asks to continue.
+        if h5ad is not None:
+            h5ad_line = f"Counts matrix for secondary analysis: `{h5ad.path}`\n\n"
+        else:
+            h5ad_line = (
+                "_No `*_anndata.h5ad` found under the run directory — if you continue to "
+                "secondary analysis I'll ask you where it is._\n\n"
+            )
+
         w_text_output(
             content=(
                 "**Seeker pipeline complete.** "
                 f"[Open the QC report](https://console.latch.bio/data/{link.node_id()})\n\n"
-                "Message me when you've looked it over and we'll continue with secondary analysis."
+                + h5ad_line
+                + "Message me when you've looked it over and we'll continue with secondary analysis."
                 + note
             ),
             appearance={"message_box": "success"},
@@ -407,11 +456,15 @@ doc — paste it into the cell above the button. Three notes:
   directory on `sys.path`, rather than trusting a hard-coded path. A `ModuleNotFoundError: No module
   named 'takara.optimize_html_images'` means a *different* `takara` package won the import — the
   helper's purge plus `importlib.invalidate_caches()` is what prevents that.
-- **Never construct the report path from a guess.** `<outputs>` records the run directory the
-  deployed workflow actually creates; the publish subdirectory beneath it is nf-core's business, so
-  search for the `_Report.html` suffix instead of assembling a filename.
-- If `iterdir()` is unavailable in the runtime, replace `_reports` with `w_ldata_browser(dir=run_dir)`
-  and have the user select the report; everything downstream is unchanged.
+- **Never construct an output path from a guess.** `<outputs>` records the layout the deployed
+  workflow actually writes; the fast path uses it and the suffix search is the safety net.
+- **This cell must locate the h5ad, not just the report.** The launch cell no longer binds an
+  execution result, so nothing else in the notebook knows where `<sample>_anndata.h5ad` is. Printing
+  its path here is what lets `steps/data_loading.md` skip its "ask the user" branch after a pod
+  restart. Do not drop it to keep the message short.
+- If `iterdir()` is unavailable in the runtime, replace `_by_suffix` with
+  `w_ldata_browser(dir=run_dir)` and have the user select the files; everything downstream is
+  unchanged.
 
 Both genome sources are always offered: the `w_radio_group` picks `PREBUILT` or `CUSTOM`, and the
 matching input swaps in reactively — the prebuilt genome `w_select` for `PREBUILT`, the
@@ -466,6 +519,14 @@ anything else — treat that as a resume signal and check Latch Data *before* an
   click the button they just bypassed — same steps as cell 3, then continue to
   `steps/view_report.md`'s follow-up question. Do not ask the user to re-confirm that the pipeline
   finished.
+- **Never ask the user where the h5ad is.** You launched this run, so its location is derivable:
+  `<outdir>/<execution_name>/OUTPUT/<sample>/<sample>_anndata.h5ad`, with the parameters still in
+  the widgets (`w_outdir`, `w_execution_name`, `w_sample` — they persist by `key` across a pod
+  restart) and cell 3's rendered output as a second source. Find it the same way cell 3 does — fast
+  path, then a bounded `_anndata.h5ad` suffix search from the run directory — and hand the resulting
+  `LPath` straight to `steps/data_loading.md` step 1b. Fall back to the picker in step 1a **only**
+  when that search genuinely comes up empty, and say so when you do, rather than asking as though
+  you never had the information.
 </resuming>
 
 <takara_lib_import>

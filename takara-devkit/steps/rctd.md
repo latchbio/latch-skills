@@ -41,9 +41,24 @@ RCTD needs a single-cell reference whose cell types and genes match the tissue. 
 - **NCBI GEO** — processed reference matrices/objects in dataset supplementary files (use when a specific study is the best match).
 - **Others as appropriate** — Human Cell Atlas Data Portal, organism-specific atlases (e.g. zebrafish/axolotl atlases), study-specific datasets. For non-human/mouse organisms, organism-specific atlases and GEO studies are usually the only option.
 
-For each candidate, capture: organism, tissue/region, disease/condition, developmental stage, **number of cells**, **number of distinct cell types**, the cell-type label column, the source/atlas, and a **direct download URL** to a `.h5ad` or `.rds` (or, if no public direct link, note that the user must download and attach it).
+For each candidate, capture: organism, tissue/region, disease/condition, developmental stage, **number of cells**, **number of distinct cell types**, the cell-type label column, the source/atlas, a **direct download URL** to a `.h5ad` or `.rds` (or, if no public direct link, note that the user must download and attach it), and — the check that decides whether the build can work at all — **where the raw counts live and how you know**: `layers['counts']`, `.raw`, or `.X`, evidenced by the download page's own label, the dataset README, or the GEO supplementary description.
 
-**1c. Present candidates and let the user choose.** Show **1–10** options as a short numbered list with those descriptions, ordered best-match first, with a one-line recommendation. Prefer references that match organism (required) → tissue → disease → developmental stage, have appropriately granular cell types, and a stable downloadable file. Ask the user to pick one (or ask a clarifying question if several tie).
+**Vet compatibility before you present a candidate, not after the build fails.** RCTD models raw
+counts, so a reference that ships only processed values cannot be converted no matter what
+parameters you pass. Two disqualifiers, both visible before launching:
+
+- **Figure / analysis objects.** A file named `Fig1_*`, `*_scanpy`, `*_processed`, `*_slim`, or one
+  whose gene count is in the low thousands (a highly-variable-gene subset rather than a
+  transcriptome) is the object behind a paper figure. Those hold log-normalized or z-scored values —
+  often clipped to a range like −4 to 10 — and no counts at all. When a source offers several files,
+  take the one it labels **raw counts** / **DGE** / **UMI counts**, and say in the candidate
+  description which file you chose and why.
+- **Cluster IDs standing in for annotation.** If the only labels are `louvain`/`leiden`/`cluster`,
+  the reference is unannotated for RCTD's purposes: deconvolving into "cell type 37" tells the user
+  nothing. Prefer a candidate with named cell types. The builder will not silently substitute a
+  cluster column — it fails and lists what it found.
+
+**1c. Present candidates and let the user choose.** Show **1–10** options as a short numbered list with those descriptions, ordered best-match first, with a one-line recommendation. Prefer references that match organism (required) → tissue → disease → developmental stage, have appropriately granular cell types, ship raw counts (above), and a stable downloadable file. Ask the user to pick one (or ask a clarifying question if several tie).
 
 **1d. If no compatible reference is found.** Don't dead-end:
 1. Tell the user what you searched and why nothing matched, then **ask for more detail** (a more specific or a broader tissue term, an alternative organism name, a related model system, does the user have a particular repository that they want to search) and **search again**.
@@ -54,7 +69,7 @@ For each candidate, capture: organism, tissue/region, disease/condition, develop
 **1e. Convert the chosen reference.** Hand the single chosen reference to the builder (`wf/rctd_reference_builder_wf.md`):
 - A **download URL** (from your search or from the user) → pass as `reference_url`.
 - A **user-attached LData file** → pass as `reference_file`.
-- Confirm the **cell-type column**: CELLxGENE references use `cell_type`; for other sources or user files, confirm which `.obs` / `meta.data` column holds the labels and pass it as `cell_type_column` (if it's wrong the builder lists the available columns so you can correct and relaunch).
+- Confirm the **cell-type column**: CELLxGENE references use `cell_type`; for other sources or user files, confirm from the dataset's documentation which `.obs` / `meta.data` column holds the labels — and that it holds **names rather than cluster IDs** — then pass it as `cell_type_column` (if it's wrong the builder lists the available columns so you can correct and relaunch).
 
 The builder downloads (if a URL), standardizes, curates (drops tiny cell types, caps cells per type), and emits `<run_name>_reference.rds` — a spacexr `Reference` built under the pinned Seurat 4.4.0 stack, so it is guaranteed compatible with RCTD regardless of the original format. That `.rds` becomes `reference_data`. See `wf/rctd_reference_builder_wf.md`.
 
@@ -80,16 +95,45 @@ user cannot search the atlases themselves. The failed build uploads
 `<run_name>_reference_FAILED.txt` to its output directory; read it, and follow `<failure_recovery>`
 in `wf/rctd_reference_builder_wf.md` — it maps each `error code:` to the right recovery. In short:
 
-1. Read the report and say, in plain language, which reference failed and why (out of memory, wrong
-   cell-type column, dead download link, Seurat v5, …).
-2. If it is a parameter problem (`CELL_TYPE_COLUMN_NOT_FOUND`, `CELL_TYPE_BELOW_MIN`), name the fix
-   and offer to relaunch with it — the reference itself is fine.
-3. Otherwise **ask the user whether you should go find a different reference**, stating the
-   constraint the failure taught you (e.g. "smaller than ~300k cells", "one that ships raw counts",
-   "a `.h5ad` rather than the Seurat v5 `.rds`"). On yes, return to **1b** and search again with that
-   constraint applied, present candidates as in **1c**, and rebuild via **1e** under a new
-   `run_name`.
-4. Never carry on to Step 2 after a failed build — there is no `.rds` to deconvolve with — and never
+1. Read the report — both `error code:` and the **`reference facts:`** block, which describes what
+   the file actually holds (each matrix and its value range, the `.obs` columns, any cluster-like
+   columns). Between them they tell you which tier of recovery applies without opening the console
+   log. Say in plain language which reference failed and why.
+2. **Tier 1 — fix a parameter, same file** (`CELL_TYPE_COLUMN_NOT_FOUND`, `CELL_TYPE_BELOW_MIN`,
+   `TOO_FEW_CELL_TYPES`, `NO_LABELED_CELLS`). The reference is fine. Pick the corrected value out of
+   the report's column list yourself, name it, and offer to relaunch. **Do not search the web.**
+3. **Tier 2 — same dataset, a different file** (`NO_RAW_COUNTS`, `NON_INTEGER_COUNTS`,
+   `SEURAT_COUNTS_MISSING`, `RDS_UNSUPPORTED_CLASS`, `H5AD_UNREADABLE`, `DOWNLOAD_*`,
+   `H5AD_NOT_HDF5`). The dataset may still be the right one — it was the *distribution* that was
+   wrong. Go back to the same source and look for the raw-counts download, the GEO supplementary
+   count matrix, the `.h5ad` rather than the Seurat v5 `.rds`, or a fresh link. Check that whatever
+   you find is a single `.h5ad`/`.rds` the builder can ingest: a tar of per-tissue text files or a
+   bare matrix + separate annotation CSV is **not** ingestible, and finding one means this tier is
+   exhausted.
+4. **Tier 3 — a different dataset** (`REFERENCE_TOO_LARGE`, `OOM_KILLED`, `OUT_OF_MEMORY`, or tier 2
+   exhausted). Return to **1b** and search with the constraint the failure taught you stated
+   explicitly — "under ~300k cells", "ships raw counts", "not a figure object".
+5. **Tier 4 — a builder bug, do not go searching** (`UNHANDLED`, `UNHANDLED_R_ERROR`,
+   `STAGE_SIGNALED`, `MISSING_*`, `ROUND_TRIP_FAILED`, `SHAPE_MISMATCH`). Say plainly that this is
+   the builder's fault and not their reference, offer a different reference as a workaround, and note
+   that the execution log is worth sending to support.
+6. **For tiers 2 and 3, do the search before you write the message.** Asking "shall I look for
+   another one?" and stopping wastes a turn on a question whose answer is almost always yes. Search
+   first, then present the alternatives *with* the explanation, so the user answers by choosing:
+
+   > The zebrafish reference I picked is ZCL's figure-1 analysis object — it stores scaled values
+   > (range −4 to 10), not raw counts, so RCTD can't use it. I looked for zebrafish references that
+   > ship raw counts and found three: … Which would you like me to rebuild with?
+
+   The confirmation still gates the pivot — changing datasets is the user's call — but they make it
+   with options in front of them.
+7. **Never repeat a failure, and don't loop.** Never relaunch byte-identical parameters. Keep a
+   running list of what has been tried (source, file, why it failed), state it when you present
+   replacements, and never re-offer something on it. **After two failed builds, stop searching**:
+   summarize everything tried and hand the choice back to the user — they can supply a reference of
+   their own, or skip RCTD per the opt-out above. Use a new `run_name` (`<run>_v2`) whenever the
+   source changes; a pure parameter fix can keep the old one.
+8. Never carry on to Step 2 after a failed build — there is no `.rds` to deconvolve with — and never
    end the turn on a failure without both the explanation and the question.
 
 If the user would rather not pursue a reference at all, skip RCTD cleanly per the opt-out above and
