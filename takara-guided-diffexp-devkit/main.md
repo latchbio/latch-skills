@@ -1,5 +1,14 @@
 # Running the guided DESeq2 workflow
 
+## Operating stance
+
+Be decisive and brief. At each stage, run the step's action, report the result
+in a sentence or two, and move on — the user wants the analysis to progress, not
+a running commentary on your reasoning or a recital of the rules. When a gate is
+cheap (stages 2 and 3) and the user's intent is clear, proceed; do not stack
+caveats or ask them to reconfirm what they just said. Save deliberation for where
+it pays: a non-default statistical parameter, and the stage-5 launch.
+
 ## Before you start
 
 Ask, using `AskUserQuestion`, only what you cannot determine from the data:
@@ -23,8 +32,10 @@ Ask, using `AskUserQuestion`, only what you cannot determine from the data:
 
 ## Gate discipline
 
-Every gate is answerable two ways: clicking the `w_button`, or typing in chat.
-Both must work — a user who types "looks right, go ahead" has confirmed.
+Gates are answered by typing in chat — "looks right", "go ahead", "yes". At the
+launch stages (3-5), clicking the workflow's launch button is also a valid
+answer, since the click itself launches the workflow. Stage 2 has no button; its
+confirmation is a chat reply.
 
 The bias is deliberately **asymmetric**:
 
@@ -53,7 +64,7 @@ with `create_tab`, named exactly as written here:
 | Tab | Created by | Holds |
 |---|---|---|
 | `1. Upload` | `steps/01-upload.md` | The example counts table and the `w_ldata_picker`; after `takara_de_prepare_counts`, the data-check findings and the detected identifier format |
-| `2. Sample Groups` | `steps/02-groups.md` | Per-sample `w_radio_group` toggles beside the reactive similarity plot, and the design table with its mislabel warning column |
+| `2. Sample Groups` | `steps/02-groups.md` | Per-sample control/treated `w_radio_group` pickers — the whole tab. No plot, no table |
 | `3. Quality Check` | `steps/03-qc.md` | `takara_de_qc` outputs: PCA, sample correlation, flagged samples |
 | `4. Differential Expression` | `steps/04-deseq2.md` | `takara_de_deseq2` outputs: volcano, MA, heatmap, top-genes table |
 | `5 (optional). GSEA` | `steps/05-gsea.md`, only after consent | `takara_de_gsea` outputs: dot plot, enriched terms table |
@@ -146,7 +157,7 @@ ever make, and you make no others:
 | Placeholder | Value |
 |---|---|
 | `{{RUN_DIR}}` | The `latch://` path of this run's directory in Latch Data. Fixed for the whole session; create it once at stage 1 and reuse it. |
-| `{{SKILL_DIR}}` | Absolute path of this skill's directory in the pod, normally `/opt/latch/plots-faas/.claude/skills/takara-guided-diffexp`. |
+| `{{SKILL_DIR}}` | Absolute path of this skill's directory in the pod, normally `/opt/latch/plots-faas/.claude/skills/takara-guided-diffexp-devkit`. |
 | `{{ID_FORMAT}}` | `id_format` read from `profile.json`. Never invent it. |
 | `{{ORGANISM}}` | `organism` read from `profile.json`. Never invent it. |
 

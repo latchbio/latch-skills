@@ -51,8 +51,9 @@ guarantee this skill exists to provide.
 - **Never launch a workflow with a non-default statistical parameter without
   saying so in chat first**, naming the parameter, the default, and the new
   value.
-- **Never skip a gate.** Each stage waits for confirmation, by button or by
-  chat. Both routes work at every gate, always.
+- **Never skip a gate.** Each stage waits for the user's confirmation — a chat
+  reply, or clicking the launch button at the workflow stages. Never advance a
+  stage the user has not confirmed.
 - **Never report output without naming the tab it is in.** The notebook does not
   switch to a new tab, so a result the user cannot find is a result they never
   got. Never use "above", "below" or any other spatial reference in chat.
