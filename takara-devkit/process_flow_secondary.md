@@ -24,9 +24,10 @@ flowchart TD
     QC --> RCTD_Q{Seeker: run RCTD?\nalways recommended here}:::decision
     RCTD_Q -->|Yes — recommended| RCTD[rctd\nReference build → doublet-mode\ndeconvolution → labels into .obs]:::seeker
     RCTD_Q -->|No — user skips| NORM
-    RCTD --> NORM
-    RCTD -. per-bead labels .-> CELL
-    RCTD -. per-bead labels .-> CELL2
+    RCTD --> RCTD_WAIT{{HARD STOP\nwait for RCTD to finish\npod may be shut down —\nnothing unsaved yet}}:::decision
+    RCTD_WAIT -->|results merged into .obs| NORM
+    RCTD_WAIT -. per-bead labels\n(cell_typing cannot run without these) .-> CELL
+    RCTD_WAIT -. per-bead labels\n(cell_typing cannot run without these) .-> CELL2
 
     NORM[normalization\nNormalize + log-transform counts]:::step
     NORM --> FEAT[feature_selection\nSelect highly variable genes]:::step

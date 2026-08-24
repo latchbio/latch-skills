@@ -379,14 +379,18 @@ def write_claim(
 # --------------------------------------------------------------------------------------------
 
 
-def _notice(content: str, *, key: str, box: str = "info") -> None:
-    """Render a message in the notebook. Silently no-op outside Plots (e.g. under test)."""
+def notice(content: str, *, key: str, box: str = "info") -> None:
+    """Render a message in the notebook. Falls back to print outside Plots (e.g. under test)."""
     try:
         from lplots.widgets.text import w_text_output
 
         w_text_output(content=content, appearance={"message_box": box}, key=key)
     except Exception:
         print(content)
+
+
+# Long-standing internal spelling; `takara.annotation` imports the public name.
+_notice = notice
 
 
 def _execution_id(execution: Any) -> Optional[str]:
@@ -595,6 +599,7 @@ __all__ = [
     "launch_key",
     "launch_workflow_once",
     "list_executions",
+    "notice",
     "params_fingerprint",
     "read_claim",
     "write_claim",

@@ -52,7 +52,7 @@ Step 4b (RCTD) is a separate reference-based track that always sits **after QC +
 
 - Run Reads to Counts only when the user starts from FASTQ files.
 - Run Background Removal only for Seeker datasets.
-- Run RCTD only for Seeker datasets. For those, **always recommend it, positioned after QC + Filtering and before Normalization** — that is where the object still holds QC-filtered raw counts, which is what RCTD requires. Offer the skip in the same message; if the user declines, continue to normalization without re-asking. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
+- Run RCTD only for Seeker datasets. For those, **always recommend it, positioned after QC + Filtering and before Normalization** — that is where the object still holds QC-filtered raw counts, which is what RCTD requires. Offer the skip in the same message; if the user declines, continue to normalization without re-asking. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. **After launching RCTD, stop — do not continue to Normalization until it finishes.** The pause is free there (the QC-filtered object is already on Latch, so the user can shut the pod down and reload one file), whereas running Normalization through DEG first strands those results in the kernel while annotation waits on RCTD anyway — see `<hard_stop>` in `steps/rctd.md`. The user may override and work ahead if they ask. Cell Type Annotation enforces this in code regardless: its first cell calls `takara.annotation.require_rctd_for_annotation`, which raises for Seeker data with RCTD outstanding, warns for Seeker data annotated without it, and passes silently for Trekker data — where skipping RCTD is the intended flow, not a shortfall (`<guard>` in `steps/cell_typing.md`). The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
 - If the user already has a processed H5AD, start at the Data Loading step.
 - Always ask, right after Data Loading, whether the user has an H&E or other pathology image to overlay — don't wait for them to bring it up. If yes, the image is almost always a separate file from the H5AD; load it and use the viewer's alignment tool to register it. Loading the H5AD alone does not align an image. Open the H5AD viewer with `sync_to` set to its `LPath` (see `steps/data_loading.md`) so the alignment persists back to the file automatically.
 
@@ -100,7 +100,7 @@ while TAKARA_LIB in sys.path:
 sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
-from takara.background_removal import KitType, remove_background
+from takara.background_removal import TileType, remove_background
 ```
 
 Four rules. The first three exist because getting them wrong produces a confusing
@@ -132,7 +132,7 @@ ever reached it.
 It is dangerous specifically because it looks healthy:
 
 - **`import takara` succeeds from it.** There is no error to notice — you get a real package with
-  `remove_background` and `KitType`, just an old one.
+  `remove_background` and `TileType`, just an old one.
 - **Its files carry today's mtimes.** The copy job re-runs on pod start, so `ls -l` shows a
   timestamp from minutes ago on content that is months old. Freshness of mtime says nothing.
 - **The branch you launch the pod from does not change it.** It is a snapshot, not a checkout, so

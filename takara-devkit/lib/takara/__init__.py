@@ -1,9 +1,16 @@
 import hashlib
 from pathlib import Path
 
+from takara.annotation import (
+    AnnotationBasis,
+    Kit,
+    RctdPending,
+    require_rctd_for_annotation,
+)
 from takara.background_removal import (
     BackgroundRemovalResult,
-    KitType,
+    KitType,  # deprecated alias for TileType
+    TileType,
     remove_background,
 )
 from takara.launch import (
@@ -17,7 +24,7 @@ from takara.launch import (
 from takara.monitor import RunMonitor, monitor, tail
 
 # Bump on every change to this package.
-__version__ = "0.4.0"
+__version__ = "0.6.0"
 
 
 def _build_id() -> str:
@@ -55,7 +62,12 @@ def describe() -> str:
 
 
 __all__ = [
+    "AnnotationBasis",
     "BackgroundRemovalResult",
+    "Kit",
+    "RctdPending",
+    "TileType",
+    "require_rctd_for_annotation",
     "KitType",
     "remove_background",
     "LaunchGuardResult",

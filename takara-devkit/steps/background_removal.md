@@ -46,7 +46,7 @@ sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
 import takara
-from takara import remove_background, KitType, monitor, tail
+from takara import remove_background, TileType, monitor, tail
 from lplots.widgets.text import w_text_output
 
 # Which code is actually running, reported before any measurement is taken. The hash is
@@ -101,7 +101,7 @@ submit_widget_state()
 with monitor("background removal") as mon:
     result = remove_background(
         adata,
-        kit_type=KitType.TEN_BY_TEN,  # or KitType.THREE_BY_THREE
+        tile_type=TileType.TEN_BY_TEN,  # or TileType.THREE_BY_THREE — the array size
         min_log10_umi=1.4,  # adjust based on UMI histogram
         progress=mon.phase,
     )
@@ -182,7 +182,7 @@ whole H5AD. Check the pod's network activity before assuming the filtering is at
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `kit_type` | - | `KitType.TEN_BY_TEN` (10mm) or `KitType.THREE_BY_THREE` (3mm) |
+| `tile_type` | - | `TileType.TEN_BY_TEN` (10mm array) or `TileType.THREE_BY_THREE` (3mm array). Required — see below |
 | `min_log10_umi` | 1.4 | log10(UMI) threshold - set at histogram valley |
 | `m` | 40 | Step 2 neighborhood size (µm) |
 | `n` | 100 | Step 3 neighborhood size (µm) |
@@ -190,6 +190,33 @@ whole H5AD. Check the pod's network activity before assuming the filtering is at
 | `q` | 10 | Min beads per n×n region |
 | `to_csr` | True | Convert `adata_filtered.X` (and any CSC layer) to CSR. This is the only place in the pipeline that converts — leave it on. Measured at 741,256 × 38,086 / 100M nnz: +1.1 s, and no increase in peak memory |
 | `progress` | None | Callable taking a string, e.g. `print`. Emits a timestamped line per step |
+
+**What `tile_type` actually controls.** It is the physical side length of the Seeker capture area —
+10mm or 3mm — and it feeds exactly one thing: the grids the two density filters use. The side length
+in microns (10000 or 3000) is divided by `m` and `n`, so at the defaults a 10×10 array becomes a
+250×250 grid for step 2 and a 100×100 grid for step 3, while a 3×3 array becomes 75×75 and 30×30.
+The grid is laid over the observed bounding box of the coordinates, so what this argument really
+says is how many microns the data spans — which is what makes each cell come out at about `m`
+microns across.
+
+**Getting it wrong is silent and severe.** `p` and `q` are minimum bead counts *per region*, so the
+wrong number of divisions changes the physical area each threshold is enforced over. Measured on
+80,000 beads across a 3mm array at default parameters:
+
+| `tile_type` | beads kept |
+|---|---|
+| `THREE_BY_THREE` (correct) | 79,982 of 80,000 |
+| `TEN_BY_TEN` (wrong) | **65** of 80,000 |
+
+250 divisions across 3000µm gives 12µm cells, far too small to hold the 5 beads `p` requires, so
+nearly all real tissue is stripped. The reverse mistake fails the other way — 133µm cells that pass
+background straight through. Neither raises. Confirm the array size against the dataset metadata
+before calling; it is one of the things `SKILL.md` asks for up front.
+
+It has nothing to do with Seeker vs Trekker. That distinction is `takara.annotation.Kit`, and it is
+the one that decides whether RCTD applies (`steps/rctd.md`). Both are called "the kit type" in
+conversation, which is why this argument is named for the tile. Through takara 0.5.x this was
+`KitType` / `kit_type`; the old spelling still works and warns.
 
 ### Inspecting Results
 

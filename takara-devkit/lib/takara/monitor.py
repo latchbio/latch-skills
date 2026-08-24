@@ -35,7 +35,7 @@ Usage::
     from takara.monitor import monitor
 
     with monitor("background removal") as mon:
-        result = remove_background(adata, kit_type=KitType.TEN_BY_TEN, progress=mon.phase)
+        result = remove_background(adata, tile_type=TileType.TEN_BY_TEN, progress=mon.phase)
 
 and, from any later cell (including after an abort)::
 

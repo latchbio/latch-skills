@@ -38,9 +38,38 @@ _log = logging.getLogger(__name__)
 _MAX_DENSE_BINS = 4_000_000
 
 
-class KitType(Enum):
+class TileType(Enum):
+    """The physical size of the Seeker capture area, in millimetres square.
+
+    This is the *only* thing it controls: the side length in microns (10mm -> 10000, 3mm -> 3000)
+    that `remove_background` divides by `m` and `n` to get the two density-filter grids. A 10x10
+    array split at `m=40` gives a 250x250 grid; the same `m` on a 3x3 gives 75x75.
+
+    Note what the grid is laid over: `grid_density_filter` bins the *observed* bounding box of the
+    coordinates, not the nominal array. So this argument is really "how many microns the data is
+    expected to span", and it is what makes each cell come out at roughly `m` microns across. The
+    two agree when the data fills the array, which is the normal case.
+
+    Pass the wrong one and nothing errors -- the grid is simply divided the wrong number of times,
+    so cells are the wrong physical size and `p`/`q` (minimum beads per region) are enforced over
+    the wrong area. It is not a subtle effect. Measured on 80,000 beads spread over a 3mm array at
+    default parameters: correct `THREE_BY_THREE` keeps 79,982 beads, and `TEN_BY_TEN` on the same
+    data keeps **65** -- 250 divisions across 3000um gives 12um cells, far too small to hold the 5
+    beads `p` requires. The reverse mistake fails the other way, with 133um cells that pass
+    background straight through. Both are silent.
+
+    It says nothing about the assay. Seeker vs Trekker is `takara.annotation.Kit`, and it is that
+    distinction, not this one, that decides whether RCTD applies. Both get called "the kit type" in
+    conversation, which is why this one is named for the tile.
+    """
+
     TEN_BY_TEN = "10x10"
     THREE_BY_THREE = "3x3"
+
+
+#: Deprecated alias. This enum was `KitType` through takara 0.5.x; notebooks that predate the
+#: rename keep working, and `takara.annotation.Kit` is what "kit" now means.
+KitType = TileType
 
 
 @dataclass
@@ -185,7 +214,7 @@ def _to_csr_freeing_source(adata_obj: AnnData, key: str | None = None) -> None:
 
 def remove_background(
     adata: AnnData,
-    kit_type: KitType,
+    tile_type: TileType | None = None,
     min_log10_umi: float = 1.4,
     m: int = 40,
     n: int = 100,
@@ -193,6 +222,7 @@ def remove_background(
     q: int = 10,
     to_csr: bool = True,
     progress: Callable[[str], None] | None = None,
+    kit_type: TileType | None = None,
 ) -> BackgroundRemovalResult:
     """Remove off-tissue background beads from Seeker spatial data.
 
@@ -221,10 +251,35 @@ def remove_background(
     Pass ``progress`` (e.g. ``print``, or a ``w_text_output`` updater) to follow a long
     run; otherwise progress goes to this module's logger at INFO. Enable it with
     ``logging.getLogger("takara.background_removal").setLevel(logging.INFO)``.
+
+    ``tile_type`` is required despite its default; it is ``None`` only so the deprecated
+    ``kit_type`` spelling can still be accepted. See ``TileType`` for what it controls.
     """
     t0 = time.monotonic()
 
-    tile_size = 10000 if kit_type == KitType.TEN_BY_TEN else 3000
+    if kit_type is not None:
+        if tile_type is not None and tile_type != kit_type:
+            raise TypeError(
+                "remove_background() got conflicting tile_type and kit_type; kit_type is the "
+                "deprecated spelling of tile_type — pass only tile_type."
+            )
+        warnings.warn(
+            "remove_background(kit_type=...) is deprecated; it is now tile_type, because this "
+            "argument is the capture-area size and has nothing to do with Seeker vs Trekker "
+            "(see takara.annotation.Kit for that). kit_type will keep working for now.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        tile_type = kit_type
+
+    if tile_type is None:
+        raise TypeError(
+            "remove_background() requires tile_type — TileType.TEN_BY_TEN for a 10mm array or "
+            "TileType.THREE_BY_THREE for a 3mm one. It sets the grid the density filters use, so "
+            "there is no safe default."
+        )
+
+    tile_size = 10000 if tile_type == TileType.TEN_BY_TEN else 3000
     grid_m = int(tile_size / m)
     grid_n = int(tile_size / n)
 

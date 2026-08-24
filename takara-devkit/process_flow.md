@@ -69,7 +69,7 @@ flowchart TD
     VIZ_Q -->|Yes| SK_Q
     VIZ_Q -->|No — stop here| DONE_VIZ([Analysis Complete]):::terminal
     SK_Q{Seeker data?}:::decision
-    SK_Q -->|Yes| BG_REM[background_removal\nRemove spatial background\nKitType 10×10 or 3×3]:::seeker
+    SK_Q -->|Yes| BG_REM[background_removal\nRemove spatial background\nTileType 10×10 or 3×3]:::seeker
     SK_Q -->|No — skip| QC
     BG_REM --> QC
 

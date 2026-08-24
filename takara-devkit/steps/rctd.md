@@ -18,7 +18,15 @@ As soon as QC + Filtering completes — and **before** starting Normalization �
 
 Ask this **every time** for Seeker data, even if the user has not mentioned cell typing. Do not run it for Trekker data, and do not raise it there.
 
-**If the user declines, skip it cleanly.** Move straight to `steps/normalization.md` — no second ask, no repeated pitch, no implication that the rest of the analysis is degraded. It is not: steps 4–9 are complete on their own, and `steps/cell_typing.md` falls back to marker-based annotation. Note in passing that RCTD can still be run later from the QC-filtered object if they change their mind, and continue.
+**If the user declines, skip it cleanly — but say once what it costs.** Move straight to `steps/normalization.md` — no second ask, no repeated pitch, no implication that the rest of the analysis is degraded. It is not: steps 4–9 are complete on their own, and `steps/cell_typing.md` falls back to marker-based annotation, which is a valid and standard approach.
+
+What the user should hear once, at the moment they decline, is what the choice actually changes — not a warning that their analysis is bad, but a plain statement of the evidence they will and won't have at annotation:
+
+> Understood, we'll skip RCTD. Worth knowing what that means downstream: your cell type labels will come from marker gene interpretation alone, without a reference-based second opinion per bead, so clusters that are mixed or ambiguous are harder to catch. That is a normal way to annotate spatial data — it is just one line of evidence rather than two. RCTD can still be run later from the QC-filtered object if you change your mind, and its labels can be cross-tabulated against the clusters we build. Moving on to normalization.
+
+Then continue, and do not raise it again. The annotation step surfaces this once more on its own — for Seeker data without RCTD labels, `require_rctd_for_annotation` renders a warning box and states the evidence basis in the summary (`<guard>` in `steps/cell_typing.md`). That is the last word on it; two statements at the points where the choice takes effect is guidance, and anything past that is nagging.
+
+**For Trekker data none of this applies.** RCTD is not recommended, not offered, and its absence is not a shortfall — do not warn about it, there or at annotation.
 
 If the user agrees, proceed. RCTD needs the **QC-filtered, raw-count** AnnData (raw counts in `.X`, spatial coordinates in `.obsm`) — use it **before** normalization. If normalization has already overwritten `.X`, recover raw counts from the raw layer or re-derive from the QC-filtered object.
 
@@ -142,6 +150,7 @@ continue at `steps/normalization.md`.
 ### Step 2 — Run RCTD
 1. Write the QC-filtered, raw-count AnnData to Latch as `.h5ad` (it must carry spatial coordinates in `.obsm["spatial"]` or `.obsm["X_spatial"]`). **Ask where to write it with a `w_ldata_picker` (`file_type="dir"`), prefilled with the directory the reference build used** — that is a directory the user chose, so offering it as the default is right; inventing one is not. See "Asking for an output directory" in `SKILL.md`.
 2. Launch RCTD with that query and the reference `.rds` per `wf/rctd_wf.md`. Doublet mode is automatic — tell the user, and do not pass a mode parameter. Offer the same directory again for RCTD's own `output_directory`, in a picker, and let them change it.
+3. **Stop the secondary-analysis track here until the run finishes** — see `<hard_stop>` below. Do not continue to `steps/normalization.md` while RCTD is in flight.
 
 **Chain the handoff; do not re-ask.** The builder's `reference_data` path is fully determined by the
 parameters you already passed it — `<output_directory>/<run_name>/<run_name>_reference.rds` — so
@@ -164,12 +173,64 @@ After RCTD completes, load `<run_name>_RCTD.h5ad` (or `<run_name>_RCTD_annotatio
 These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `first_type` against the Leiden clusters. After merging, continue the normal secondary-analysis track (normalization → … → annotation).
 </method>
 
+<hard_stop>
+**Once RCTD is launched, the secondary-analysis track stops here until it finishes.** Do not begin
+`steps/normalization.md`, and do not let a "what's next?" or "keep going" carry you into it. The
+correct answer to "what's next" at this point is: nothing, until RCTD lands.
+
+**Why stop rather than work in parallel.** Steps 4–9 have no *computational* dependency on RCTD —
+they would run correctly — but they leave the session in a state that cannot be safely paused:
+
+- The point of launching a long workflow is that the user can **shut the notebook pod down** and stop
+  paying for it. Right now that shutdown is free: the QC-filtered AnnData was written to Latch in
+  Step 2.1, so nothing in the kernel is unrecoverable. Reload that one file on return and continue.
+- Run normalization → feature selection → dimensionality reduction → clustering → DEG first, and that
+  stops being true. Those results live in the kernel, so the user is choosing between paying for an
+  idle pod for the rest of the RCTD run or losing the work — a choice created entirely by starting
+  steps that had nowhere to finish, since annotation is blocked on RCTD anyway.
+- Working ahead buys only the appearance of progress: the track ends at annotation, and annotation
+  waits for these labels regardless (`<rctd_gate>` in `steps/cell_typing.md`).
+
+**What to do instead.** Deliver the `<long_running_guidance>` message from `wf/rctd_wf.md` in full,
+say plainly that this is a stopping point and why, and end the turn there:
+
+> RCTD is running on Latch compute, and it's the natural place to pause: the next steps
+> (normalization through DEG) all feed into cell type annotation, and that needs RCTD's labels — so
+> running them now would just leave results sitting in the notebook waiting on the same thing.
+>
+> Everything needed to pick up is already saved to Latch, so you can **shut the notebook pod down now
+> and stop paying for it** — that will not interrupt RCTD. Follow its progress in the workflows
+> executions tab. When it's done, restart the pod, reopen the notebook, go to the **RCTD** tab and
+> click **Check my RCTD results**. Message me once it reports success and I'll merge the labels in and
+> carry on with normalization.
+
+**Resuming.** Follow `<resuming>` in `wf/rctd_wf.md` — judge from Latch Data, never from notebook
+state, and never by re-running the launch cell. When `<run_name>_RCTD.h5ad` is present, reload the
+QC-filtered `.h5ad` from Step 2.1 if the kernel was lost, do Step 3 (merge), then continue at
+`steps/normalization.md`.
+
+**If the user asks to keep working anyway, let them.** The stop protects their pod budget, not a
+correctness invariant — someone who is staying at the keyboard regardless and wants the interactive
+steps out of the way is making a reasonable call. Say what it costs, then proceed:
+
+> We can — normalization through DEG don't need RCTD. Just so you know what you're choosing: those
+> results live in the notebook, so the pod has to stay up until RCTD finishes or you'd lose them, and
+> annotation will still have to wait for the labels at the end. Happy to go ahead on that basis.
+
+In that branch, treat saving the working object as part of the job: write it back to Latch at a point
+the user picks before any later shutdown, per the save note in `<rctd_gate>` (`steps/cell_typing.md`).
+Do not silently accept the parallel path as the default — the stop is the default.
+</hard_stop>
+
 <workflows>
 - `wf/rctd_reference_builder_wf.md` — converts the chosen reference (file or URL) into a compatible `.rds`.
 - `wf/rctd_wf.md` — runs the deconvolution.
 </workflows>
 
 <library>
+- `takara.launch.launch_workflow_once` — the guarded launch used for both the reference build and the deconvolution.
+- `takara.launch.find_live_executions` — asks Latch whether an RCTD run is in flight, without launching anything.
+- `takara.annotation.require_rctd_for_annotation` — the downstream precondition this step's output satisfies; see `<guard>` in `steps/cell_typing.md`.
 </library>
 
 <self_eval_criteria>
@@ -183,6 +244,7 @@ These `.obs` columns persist for `steps/cell_typing.md`, which cross-tabulates `
 - The cell types present in the reference are plausible for the user's tissue.
 - After running, the fraction of beads classified as `singlet`/`doublet` (vs `reject`) is reasonable; a very high reject rate suggests a reference/tissue mismatch — surface this to the user.
 - `first_type`, `second_type`, `spot_class` are present in `adata.obs` and aligned to barcodes before proceeding to annotation.
+- After launching RCTD, the secondary-analysis track **stopped** — normalization did not begin while the run was in flight — and the user was told this is a pause point, why, and that the pod can be shut down because everything needed to resume is already on Latch. If the user chose to continue in parallel instead, that was their explicit call and the cost of it was stated.
 </self_eval_criteria>
 
 <long_running_guidance>
