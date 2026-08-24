@@ -55,20 +55,52 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 
 ### Key analysis files
 
-- `combined_sm_ge.h5ad`: Gene activity scores for all spots/cells. **Recommended for analyses.** `.X` matrix contains gene activity imputed from chromatin accessibility.
-- `combined_sm_motifs.h5ad`: Motif enrichment scores (870 motifs). `.X` matrix contains TF motif enrichment.
+Secondary-analysis objects live under `anndata/` in the output directory.
 
-### Raw data paths
+- `combined_ge.h5ad`: **Full** gene activity scores for all spots/cells. `.X` contains gene activity imputed from chromatin accessibility. **Use this for analysis** — DE, marker detection, cell typing, re-clustering.
+- `combined_motifs.h5ad`: **Full** motif enrichment scores (870 motifs). `.X` contains TF motif enrichment.
+- `combined_sm_ge.h5ad` / `combined_sm_motifs.h5ad`: **Reduced (`_sm`) — visualization only.** These are built for fast loading in Plots: `.X` is cast to `float16` and raw counts/layers are stripped. Do **not** compute on them (differential analysis, marker detection, re-clustering); precision loss makes results unreliable. Load them for viewers/plots, then use the full objects above for any computation.
 
-**Internal Workspace (13502)**:
-- Fragments: `/chromap_outs/[Run_ID]/chromap_output/fragments.tsv.gz`
-- Spatial: `/Images_spatial/[Run_ID]/spatial`
-- Downstream-ready: `/snap_outs/[project_name]/`
+### Data paths
 
-**Collaborator Workspaces**:
+Workspaces are organized **by Workflow output** — one top-level directory per
+Workflow, with a subdirectory per run or project:
+
+- Fragments (from FASTQ): `/fastq2frags/[Run_ID]/chromap_output/fragments.tsv.gz`
+- Fragments (from CRAM): `/cram2frags/[project_name]/fragments.sort.bed.gz`
+- Spatial: `/spatials/[Run_ID]/spatial`
+- Downstream-ready (SnapATAC2): `/atac_analysis_snap/[project_name]/`
+- Downstream-ready (ArchR): `/atac_analysis_archr/[project_name]/`
+- Optimization sweeps: `/atac_optimize_snap/[project_name]/`, `/atac_optimize_archr/[project_name]/`
+- Comparisons: `/compare_outs/[project_name]/`
+
+Raw FASTQs are not delivered by default; the **filtered** FASTQs from
+preprocessing are under `/fastq2frags/[Run_ID]/filtered_fastqs/`.
+
+<details>
+<summary>Legacy paths (older workspaces, pre-restructure)</summary>
+
+Older data may still use the previous naming. If the current paths above are
+absent, fall back to these:
+
+| Legacy | Current |
+|---|---|
+| `/chromap_outs/[Run_ID]/chromap_output/` | `/fastq2frags/[Run_ID]/chromap_output/` |
+| `/Images_spatial/[Run_ID]/spatial` | `/spatials/[Run_ID]/spatial` |
+| `/snap_outs/[project_name]/` | `/atac_analysis_snap/[project_name]/` |
+| `/snap_opts/[project_name]/` | `/atac_optimize_snap/[project_name]/` |
+| `/ArchRProjects/[project_name]/` | `/atac_analysis_archr/[project_name]/` |
+| `/optimize_outs/[project_name]/` | `/atac_optimize_archr/[project_name]/` |
+
+Collaborator workspaces previously grouped by stage rather than Workflow:
 - Fragments: `.../Raw_Data/[Run_ID]/chromap_output/fragments.tsv.gz`
 - Spatial: `.../Raw_Data/[Run_ID]/spatial`
 - Downstream-ready: `.../Processed_Data/[project_name]`
+
+In legacy outputs the `.h5ad` and `.rds` objects sit at the top of the project
+directory rather than under `anndata/` and `seurat_objects/`.
+
+</details>
 
 ## Latch-specific execution
 

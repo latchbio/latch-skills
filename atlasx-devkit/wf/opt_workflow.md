@@ -18,22 +18,27 @@ Assess DBiT-seq epigenomic experiment quality and systematically explore cluster
 - `n_comps`: [30, 50]
 
 **Optional Parameters**:
-- `adata_subsetted_file` (LatchFile): Subset AnnData to cluster
+- `combined_h5ad_override` (LatchFile): Precomputed `combined.h5ad` to use instead of building one from the runs
 - `tile_size` (int): Genomic bin size (default: 5000)
 - `varfeat_iters` (List[int]): Variable feature iterations (default: [1])
-- `min_cluster_size` (int): Minimum cells per cluster
-- `min_tss` (float): Minimum TSS enrichment
-- `min_frags` (int): Minimum fragments per cell
+- `leiden_iters` (int): Leiden iterations, `-1` = until convergence (default: -1)
+- `min_cluster_size` (int): Minimum cells per cluster (default: 20)
+- `min_tss` (float): Minimum TSS enrichment (default: 2.0)
+- `min_frags` (int): Minimum fragments per cell (default: 10)
+- `subsample_fraction` (float or None): Fraction of cells to retain before optimization
+- `subsample_n_cells` (int or None): Absolute number of cells to retain
+- `subsample_seed` (int): Random seed for subsampling (default: 42)
 - `pt_size` (int or None): Point size for spatial plots
 - `qc_pt_size` (int or None): Point size for QC plots
 </parameters>
 
 <outputs>
-Output directory: `/snap_opts/[project_name]/`
-- `setN_*` folders: Each represents different parameter combinations. Contains:
-  - `combined.h5ad`: AnnData with .X as tile matrix (genomic bins x cells)
-- `figures/`: QC and clustering plots as PDFs to guide parameter selection
+Output directory: `/atac_optimize_snap/[project_name]/`  (legacy: `/snap_opts/`)
+- `combined.h5ad`: the shared combined AnnData (tile matrix, filters, spatial coords)
+- `figures/`: `all_umaps.png`, `all_spatialdim.png`, `spatial_qc.png`, `tss_frags.png` — one page per parameter set
+- `all_umaps.html`, `all_spatialdim.html`, `spatial_qc.html`: browsable galleries for side-by-side comparison of sets
 - `medians.csv`: QC metrics summary for all samples
+- `_intermediate/_mapped_sets/[set]/`: per-parameter-set outputs, each with its own `combined.h5ad`
 </outputs>
 
 <example>
@@ -59,16 +64,23 @@ class Run:
     spatial_dir: LatchDir
     condition: str = "None"
 
-# 1) Expose widget for user to pick the top-level remote folder (returns LPath)
-raw_data_dir = w_ldata_picker(label="Raw Data Directory")
-if raw_data_dir.value is None:
+# 1) Pick the two source folders.
+#    Fragments and spatial folders live in SEPARATE top-level directories:
+#      fastq2frags/[Run_ID]/chromap_output/fragments.tsv.gz
+#      spatials/[Run_ID]/spatial
+#    (Legacy layout kept both under one Raw_Data/[Run_ID]/ folder — if you're
+#     working with older data, point both pickers at that same folder.)
+frags_dir = w_ldata_picker(label="Fragments Directory (fastq2frags)")
+spatial_dir_root = w_ldata_picker(label="Spatial Directory (spatials)")
+if frags_dir.value is None or spatial_dir_root.value is None:
     w_text_output(
-        content="Select the top-level folder containing sample subfolders.",
+        content="Select the fastq2frags and spatials folders (each contains per-run subfolders).",
         appearance={"message_box": "warning"}
     )
     exit(0)
 
-root: LPath = raw_data_dir.value  # already an LPath
+frags_root: LPath = frags_dir.value      # already an LPath
+spatial_root: LPath = spatial_dir_root.value
 
 # 2) Samples + condition map
 samples = adata.obs["sample"].unique()
@@ -77,7 +89,7 @@ cond_map = (adata.obs.groupby("sample")["condition"].first().to_dict()
             else {s: "None" for s in samples})
 
 # 3) Helper to join remote paths (LPath uses "/" join)
-def rpath(*parts: str) -> LPath:
+def rpath(root: LPath, *parts: str) -> LPath:
     p = root
     for part in parts:
         p = p / part
@@ -87,8 +99,8 @@ def rpath(*parts: str) -> LPath:
 runs = []
 for s in samples:
     print(s)
-    frag_lp: LPath = rpath(str(s), "chromap_output", "fragments.tsv.gz")
-    spat_lp: LPath = rpath(str(s), "spatial")
+    frag_lp: LPath = rpath(frags_root, str(s), "chromap_output", "fragments.tsv.gz")
+    spat_lp: LPath = rpath(spatial_root, str(s), "spatial")
 
     runs.append(
         Run(
@@ -109,7 +121,7 @@ def to_list_of_floats(text: str):
 
 params = {
      "runs": runs, 
-     "adata_subsetted_file": LatchFile("latch:///adata_subset.h5ad"),  # optional
+     "combined_h5ad_override": LatchFile("latch:///combined.h5ad"),  # optional
      "genome": genome.value,
      "project_name": project_name.value,
      "tile_size": 5000,
@@ -127,7 +139,7 @@ params = {
 w = w_workflow(
   wf_name="wf.__init__.opt_workflow",
   key="clustering_workflow_run_1",
-  version="0.3.5-9e16e4",
+  version=None,  # None = latest registered version; pin a "<version>-<hash>" string only if you need reproducibility
   params=params,
   automatic=True,
   label="Run clustering workflow",
