@@ -50,6 +50,11 @@ Use when the h5ad files come from fundamentally different sample types (e.g., di
 - **Output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Directory on Latch where the merged h5ad will be saved.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text. Render it in the same
+    message as the other parameters you are collecting in chat, so their reply is the turn in which
+    you read its `.value`. If the user chose an output directory earlier in this session, prefill it
+    as the picker's `default=` and name it in chat; if not, render the picker empty and offer no
+    default. See "Asking for an output directory" in `SKILL.md`.
 
 - **Output filename** → `output_h5ad` (`str`, **required**)
   - Name for the merged output file. Must end in `.h5ad`.
@@ -81,8 +86,10 @@ Only collect parameters and execute the merger after the user explicitly confirm
 <example>
 ```python
 from dataclasses import dataclass
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
+
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 
 @dataclass
 class H5AD:
@@ -104,25 +111,31 @@ params = {
         ),
         # add one H5AD entry per additional file to merge
     ],
-    "output_directory": LatchDir("latch://..."),  # required — set by user
+    "output_directory": LatchDir(OUTPUT_DIR),     # required — set by user
     "output_h5ad": "merged.h5ad",                 # required — must end in .h5ad
 }
 
-w = w_workflow(
+res = launch_workflow_once(
     wf_name="wf.__init__.merge_h5ad_wf",
-    key="h5ad_merger_run_1",
     version="0.0.7-da7e60",
     params=params,
-    automatic=True,
     label="H5AD Merger",
+    key_prefix="h5ad_merger",   # key is derived from params — do NOT pass a hand-written key
+    output_dir=OUTPUT_DIR,
+    automatic=True,
 )
-execution = w.value
 
-if execution is not None:
-    res = await execution.wait()
+if res.status is LaunchStatus.LAUNCHED:
+    done = await res.execution.wait()
 
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
+    if done is not None and done.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
         # merged h5ad is available at output_directory/output_h5ad
-        workflow_outputs = list(res.output.values())
+        workflow_outputs = list(done.output.values())
+elif res.status is LaunchStatus.BLOCKED_RUNNING:
+    # Already merging these files. Do not relaunch, and do not re-run this cell to check.
+    print(res.existing.describe())
 ```
+
+`OUTPUT_DIR` is the `latch://` string the user chose; pass the same value to `LatchDir(...)` and to
+`output_dir=` so the launch guard writes its record beside the outputs.
 </example>

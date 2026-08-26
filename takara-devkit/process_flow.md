@@ -69,7 +69,7 @@ flowchart TD
     VIZ_Q -->|Yes| SK_Q
     VIZ_Q -->|No — stop here| DONE_VIZ([Analysis Complete]):::terminal
     SK_Q{Seeker data?}:::decision
-    SK_Q -->|Yes| BG_REM[background_removal\nRemove spatial background\nKitType 10×10 or 3×3]:::seeker
+    SK_Q -->|Yes| BG_REM[background_removal\nRemove spatial background\nTileType 10×10 or 3×3]:::seeker
     SK_Q -->|No — skip| QC
     BG_REM --> QC
 
@@ -117,7 +117,7 @@ flowchart TD
 *(TrekkerU_PIP no longer needs a preprocessing step as of Trekker v1.4.11 — PIPSeeker conversion is built into `trekker_pipeline`, so it follows the standard-platform path above.)*
 
 **Secondary Analysis (all paths)**
-`data_loading` (viewer opened with `sync_to`) → *always ask: have an H&E/pathology image to overlay?* → *(optional)* `image_overlay` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
+`data_loading` (viewer opened with `sync_to`) → *always ask: have an H&E/pathology image to overlay?* → *(optional)* `image_overlay` → *always ask: continue with secondary analysis?* → *(Seeker only)* `background_removal` → `qc` → *(Seeker only, always recommended — user may skip)* `rctd` → `normalization` → `feature_selection` → `dimensionality_reduction` → `clustering` → `{dge, cell_typing, or both}`
 
 **Visualization Only / Image Overlay**
 `data_loading` (viewer opened with `sync_to`) → *always ask about image overlay* → *(optional)* `image_overlay` (load separate image file → align with viewer's alignment tool → alignment persists to the H5AD via `sync_to`) → ask about secondary analysis → Analysis Complete

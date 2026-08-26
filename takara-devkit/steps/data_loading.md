@@ -5,7 +5,26 @@ Load raw data into memory, display to user and check dimensions.
 <method>
 ### Step 1a — Get the H5AD file
 
-If you do not already have the source H5AD's `LPath` (e.g. this is a fresh Secondary Analysis / Visualization entry rather than a direct continuation from a just-completed primary pipeline run), offer the user both input routes: render a `w_ldata_picker` for the file **and** tell them they can instead use the **attach button in the Agent text interface**. Use whichever they supply first.
+**If a Seeker or Trekker run in this session produced this H5AD, derive its path — do not ask for
+it.** Both pipelines write one, and a pipeline you launched has a known output location. Losing
+kernel state (the user closed the notebook, the pod restarted) does not change that: the launch
+parameters persist in the widgets by `key`, and the pipeline's cell 3 records the path on screen.
+
+| Pipeline | H5AD | Doc |
+|---|---|---|
+| Seeker | `<outdir>/<execution_name>/OUTPUT/<sample>/<sample>_anndata.h5ad` | `wf/seeker_pipeline_wf.md` |
+| Trekker | `<output_dir>/<analysis_date>_<sample_id>/trekker_<sample_id>/output/<sample_id>_ConfPositioned_anndata_matched.h5ad` | `wf/trekker_pipeline_wf.md` |
+
+Use the path above as a fast path and a bounded suffix search from the run directory as the fallback
+— `_anndata.h5ad` for Seeker, `_anndata_matched.h5ad` for Trekker. See `<outputs>` and `<resuming>`
+in the relevant doc. **For Trekker, rank the hits**: it writes three `_anndata_matched.h5ad` files
+and only `_ConfPositioned_` in `output/` is correct — the two under `output/intermediates/` hold
+less-filtered bead sets and load without any error to tell you it went wrong.
+
+Asking the user to locate a file you just generated is a bug, not a safe default.
+
+Otherwise — a fresh Secondary Analysis / Visualization entry, or a search that genuinely came
+up empty — offer the user both input routes: render a `w_ldata_picker` for the file **and** tell them they can instead use the **attach button in the Agent text interface**. Use whichever they supply first.
 
 ```python
 from lplots.widgets.ldata import w_ldata_picker
@@ -30,7 +49,23 @@ h5ad_path = LPath("latch://.../results/sample.h5ad")
 local_h5ad = Path("/tmp") / h5ad_path.name()
 h5ad_path.download(local_h5ad, cache=True)
 
-adata = ad.read_h5ad(local_h5ad, backed='r')
+# Load in memory — NOT backed='r'. Confirmed with Latch engineering: sync_to writes by
+# serializing the Python AnnData object and uploading it to the LPath, and backed='r' is
+# read-only so it cannot be the write channel. A backed handle here silently breaks the
+# image-alignment persistence in steps/image_overlay.md. Hand the viewer the same object
+# that analysis modifies.
+#
+# This does mean the counts matrix is resident for the whole session. On an 8–32 GB pod a
+# 3–4B read Seeker dataset is a real fraction of that, so check before loading rather than
+# discovering it as a stall (see <memory_check> below).
+adata = ad.read_h5ad(local_h5ad)
+
+# Background removal and QC both read obs['total_counts'], and nothing else in the pipeline
+# computes it — some H5ADs arrive with it, some do not. Fill it in here rather than letting
+# background removal fail on a bare pandas KeyError several steps later.
+if "total_counts" not in adata.obs:
+    import numpy as np
+    adata.obs["total_counts"] = np.asarray(adata.X.sum(axis=1)).ravel()
 
 viewer = w_h5(
     label="Review Takara H5AD",
@@ -43,14 +78,8 @@ Once the data is loaded and confirmed, **always ask the user whether they have a
 
 ### Step 1c — Point the user at the viewer's tab
 
-The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat
-message that reports the dimensions — see "Telling the user where results appeared" in `SKILL.md`:
-
-> Your data is loaded: 84,213 beads × 31,053 genes. The viewer opened in a **new tab** — click it in
-> the notebook to see the spatial coordinates. Do you have an H&E or other pathology image you'd like
-> to overlay?
-
-Everything after this step happens *in that tab*, so this is the one the user most needs to find.
+Name the tab the viewer opened in, in the same chat message that reports the dimensions — see
+`<new_tab_notice>` below for the wording.
 </method>
 
 <workflows>
@@ -60,8 +89,45 @@ Everything after this step happens *in that tab*, so this is the one the user mo
 </library>
 
 <self_eval_criteria>
+- When a Seeker or Trekker run in this session produced the H5AD, its path was derived from the run's output directory — the user was not asked to locate a file the pipeline had just written
+- For a Trekker-produced H5AD, the file loaded is the `_ConfPositioned_` one in `output/`, not either intermediate under `output/intermediates/`
 - Ensure ~70k–90k beads for Seeker 3x3 or ~0.8–1.1M beads for Seeker 10x10
 - Ensure there are ~30K gene features
+- The AnnData handed to downstream steps is in memory (`adata.isbacked is False`) — `sync_to` cannot write back from a backed handle, so a backed object breaks image-alignment persistence
+- The available-RAM check ran and the H5AD comfortably fits (see `<memory_check>`)
+- `adata.obs['total_counts']` exists before any downstream step runs — background removal and QC both require it and neither computes it
 - The viewer was opened with `sync_to` set to the source H5AD's `LPath`, not just a local path, so later edits (e.g. image alignment) can persist
 - The user was told, in chat, which tab the viewer opened in
 </self_eval_criteria>
+
+<memory_check>
+Run this **before** `read_h5ad`. The pod has 8–32 GB, and the in-memory object plus the copies
+background removal and normalization make will need several times the file size. A pod that runs out
+of memory does not crash — it pages, and the notebook simply stops making progress with no traceback.
+
+```python
+import psutil
+
+size_gb = local_h5ad.stat().st_size / 1e9
+avail_gb = psutil.virtual_memory().available / 1e9
+print(f"H5AD {size_gb:.2f} GB | available RAM {avail_gb:.1f} GB")
+if avail_gb < 4 * size_gb:
+    print("WARNING: tight. Expect paging in background removal / normalization.")
+```
+
+If it warns, tell the user before loading and offer a larger pod rather than starting a run that will
+stall hours later. Compressed H5ADs expand well beyond their on-disk size, so treat 4× as a floor.
+</memory_check>
+
+<new_tab_notice>
+The viewer opens in its **own tab**, and the notebook does not switch to it. Say so in the same chat
+message that reports the dimensions — see "Telling the user where results appeared" in `SKILL.md`:
+
+> Your data is loaded: 84,213 beads × 31,053 genes. The viewer opened in a **new tab** — click it in
+> the notebook to see the spatial coordinates. Do you have an H&E or other pathology image you'd like
+> to overlay?
+
+Everything after this step happens *in that tab*, so this is the one the user most needs to find.
+Keep the H&E question in the same message — `main.md` requires that offer every time spatial data is
+loaded.
+</new_tab_notice>

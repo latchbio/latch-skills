@@ -38,6 +38,7 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 2b. Image Overlay (always offer after loading; e.g. H&E) — [step details](steps/image_overlay.md)
 3. Background Removal (Seeker only) — [step details](steps/background_removal.md)
 4. Quality Control and Filtering — [step details](steps/qc.md)
+4b. RCTD Cell Type Deconvolution (Seeker only; always recommended here, user may skip) — [step details](steps/rctd.md)
 5. Normalization — [step details](steps/normalization.md)
 6. Feature Selection — [step details](steps/feature_selection.md)
 7. Dimensionality Reduction — [step details](steps/dimensionality_reduction.md)
@@ -45,13 +46,13 @@ Read `main.md` for the step plan, then load each step doc before executing it.
 9. Differential Gene Expression — [step details](steps/diff_gene_expression.md)
 10. Cell Type Annotation — [step details](steps/cell_typing.md)
 
-RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a separate reference-based track — [step details](steps/rctd.md), [RCTD workflow](wf/rctd_wf.md), [reference builder workflow](wf/rctd_reference_builder_wf.md)
+Step 4b (RCTD) is a separate reference-based track that always sits **after QC + Filtering and before Normalization**, because it consumes raw counts and normalization overwrites them — [step details](steps/rctd.md), [RCTD workflow](wf/rctd_wf.md), [reference builder workflow](wf/rctd_reference_builder_wf.md)
 
 ## Important branches
 
 - Run Reads to Counts only when the user starts from FASTQ files.
 - Run Background Removal only for Seeker datasets.
-- Run RCTD only for Seeker datasets, optionally, after QC. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
+- Run RCTD only for Seeker datasets. For those, **always recommend it, positioned after QC + Filtering and before Normalization** — that is where the object still holds QC-filtered raw counts, which is what RCTD requires. Offer the skip in the same message; if the user declines, continue to normalization without re-asking. It is a separate track from clustering/DEG/annotation; its per-bead labels complement — and do not replace — marker-based cell-type annotation. **After launching RCTD, stop — do not continue to Normalization until it finishes.** The pause is free there (the QC-filtered object is already on Latch, so the user can shut the pod down and reload one file), whereas running Normalization through DEG first strands those results in the kernel while annotation waits on RCTD anyway — see `<hard_stop>` in `steps/rctd.md`. The user may override and work ahead if they ask. Cell Type Annotation enforces this in code regardless: its first cell calls `takara.annotation.require_rctd_for_annotation`, which raises for Seeker data with RCTD outstanding, warns for Seeker data annotated without it, and passes silently for Trekker data — where skipping RCTD is the intended flow, not a shortfall (`<guard>` in `steps/cell_typing.md`). The reference can be the user's own `.rds` or one the agent finds and builds from a tissue description.
 - If the user already has a processed H5AD, start at the Data Loading step.
 - Always ask, right after Data Loading, whether the user has an H&E or other pathology image to overlay — don't wait for them to bring it up. If yes, the image is almost always a separate file from the H5AD; load it and use the viewer's alignment tool to register it. Loading the H5AD alone does not align an image. Open the H5AD viewer with `sync_to` set to its `LPath` (see `steps/data_loading.md`) so the alignment persists back to the file automatically.
 
@@ -60,15 +61,35 @@ RCTD Cell Type Deconvolution (Seeker only, optional) — runs after QC as a sepa
 If a step requires Takara helper code, import from the skill's `lib/` directory:
 
 ```python
+import hashlib
 import importlib
 import sys
 from pathlib import Path
 
-TAKARA_LIB = "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib"
+# This skill is checked out under `.claude/skills/` — the same convention `latch-curation`
+# uses. Resolve it rather than hard-coding, and never fall back to `technology_docs/takara`;
+# see <legacy_technology_docs_path> below for why that path is poison.
+_SKILLS_ROOT = Path("/opt/latch/plots-faas/.claude/skills")
 
-# Verify the module is actually there before trusting the path — sys.path.insert of a directory
-# that does not exist is a silent no-op, and the import then resolves against some other `takara`.
-assert (Path(TAKARA_LIB) / "takara" / "background_removal.py").is_file(), TAKARA_LIB
+
+def _resolve_takara_lib() -> Path:
+    """The `lib/` directory to put on sys.path. Raises rather than silently importing stale code."""
+    for cand in (
+        _SKILLS_ROOT / "takara-devkit" / "lib",
+        _SKILLS_ROOT / "latch-skills" / "takara-devkit" / "lib",
+    ):
+        if (cand / "takara" / "background_removal.py").is_file():
+            return cand
+    # Layout changed under us. The skills tree is small, so a search is cheap and beats failing.
+    for hit in _SKILLS_ROOT.rglob("takara/background_removal.py"):
+        return hit.parent.parent
+    raise RuntimeError(
+        f"takara lib not found under {_SKILLS_ROOT}. Do NOT substitute the "
+        f"technology_docs/takara path — it is a frozen pre-monorepo snapshot."
+    )
+
+
+TAKARA_LIB = str(_resolve_takara_lib())
 
 # Whichever `takara` is imported first pins its __path__ for the rest of the session, so a bare
 # sys.path.insert does nothing. Drop the cached package AND refresh the path finders.
@@ -79,26 +100,59 @@ while TAKARA_LIB in sys.path:
 sys.path.insert(0, TAKARA_LIB)
 importlib.invalidate_caches()
 
-from takara.background_removal import KitType, remove_background
+from takara.background_removal import TileType, remove_background
 ```
 
-Three rules, all of which exist because getting this wrong produces a confusing
+Four rules. The first three exist because getting them wrong produces a confusing
 `ModuleNotFoundError` naming a *submodule* (`No module named 'takara.optimize_html_images'`) even
-though `takara` itself imported fine — the signature of a different `takara` winning the import:
+though `takara` itself imported fine — the signature of a different `takara` winning the import.
+The fourth exists because getting it wrong produces no error at all:
 
-1. **Verify the path before using it.** Never trust a hard-coded lib directory blind.
+1. **Verify the path before using it.** Never trust a hard-coded lib directory blind —
+   `sys.path.insert` of a non-existent directory is a silent no-op.
 2. **Purge `sys.modules` and call `importlib.invalidate_caches()`.** The purge handles a package
    bound to another path; `invalidate_caches()` handles cached directory listings that otherwise
    keep a newly-added path's contents invisible.
 3. **Use one path convention everywhere in this skill.** Two paths for the same package means
    whichever imports first wins for the session.
+4. **Resolve under `.claude/skills/`, never under `technology_docs/`.** The wrong one of those
+   two imports successfully and runs months-old code.
 
 For imports that are optional — `takara.optimize_html_images`, used only to shrink report images —
 use the non-raising `_load_takara_optimize()` helper in `<takara_lib_import>` at the end of
 `wf/seeker_pipeline_wf.md` instead, so a missing library degrades the output rather than failing the
 cell.
 
+<legacy_technology_docs_path>
+`/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/` is **not** this
+skill. It is a frozen snapshot of takara-devkit from before it moved into the latch-skills monorepo,
+retained only so older notebooks that hard-code it keep importing. Nothing merged since the move has
+ever reached it.
+
+It is dangerous specifically because it looks healthy:
+
+- **`import takara` succeeds from it.** There is no error to notice — you get a real package with
+  `remove_background` and `TileType`, just an old one.
+- **Its files carry today's mtimes.** The copy job re-runs on pod start, so `ls -l` shows a
+  timestamp from minutes ago on content that is months old. Freshness of mtime says nothing.
+- **The branch you launch the pod from does not change it.** It is a snapshot, not a checkout, so
+  launching from a feature branch leaves it exactly as it was.
+
+Its contents are the takara-devkit tree at the migration commit, minus `SKILL.md` — 15 files,
+`lib/takara/` holding only `__init__.py` (178 bytes) and `background_removal.py` (3,040 bytes). If
+you see two `.py` files in `lib/takara/`, you are in the snapshot.
+
+This cost a full investigation: a 3-billion-read run was benchmarked "old code vs new code" at 3.5 h
+and 5 h, and both numbers were the *same* old code — the optimizations under test had never
+executed. **Confirm the build id before trusting any timing measurement**; `steps/background_removal.md`
+has the check.
+</legacy_technology_docs_path>
+
 ## Requesting files from the user
+
+This section is about **inputs** — a file or directory that already exists and has to be located. For
+the destination results are written to, see "Asking for an output directory" below: the picker is
+mandatory there, and the attach button is not an alternative.
 
 Whenever a step needs a single file or directory the agent does not already have (e.g. a tissue
 image, a reference, an h5ad data file), give the user **both** ways to provide it:
@@ -125,12 +179,82 @@ if h5ad_picker.value is not None:
 
 If neither route works, fall back to asking the user for the Latch Data path directly.
 
+**Never end your turn waiting for a widget to be filled in.** Nothing in Plots can start an agent
+turn, so a picker you render and then walk away from produces a dead notebook: the user selects a
+file, nothing happens, and after a few minutes they conclude you have hung and interrupt you. This
+has already happened at the RCTD reference-builder step. Either
+
+- ask for the value **in chat** and read it from their reply, or
+- render the picker in the **same cell** as the button that consumes it, so their selection arms a
+  click they can make themselves.
+
+The reactive kernel re-runs that cell when the widget value changes, so the button enables on its
+own — see the pattern in `wf/seeker_pipeline_wf.md`. A widget whose value only *you* can act on is a
+widget the user cannot use.
+
 This applies to **simple, single file or directory inputs only**. It does not apply to the
 multi-parameter entry for `seeker_pipeline_wf` and `trekker_pipeline_wf` — for those pipelines
 build the full parameter entry widget set **and the launch cell at the same time**, exactly as
-those workflow docs specify. Never withhold the `w_workflow` cell waiting for the user to confirm
+those workflow docs specify. Never withhold the launch cell waiting for the user to confirm
 in chat: that cell renders the launch button, so if it isn't generated the customer has no way to
 start the pipeline.
+
+## Asking for an output directory
+
+Every workflow in `wf/` takes an output directory, and `steps/rctd.md` writes a query `.h5ad` back to
+Latch. **Whenever you need the user to say where results are written, render a `w_ldata_picker`
+(`file_type="dir"`) for it.** Never ask for the destination as free text only. A `latch://` path typed
+from memory is how a run ends up writing into a directory that does not exist, or into last week's
+run directory; a picker only yields places that are actually there.
+
+The picker is required — but it is never the *only* thing you leave the user with, because nothing in
+Plots can start an agent turn. Pair it one of two ways:
+
+- **In a parameter form** (`seeker_pipeline_wf`, `trekker_pipeline_wf`), the picker sits in the
+  parameter cell and the launch button in the next cell reads its `.value`. The selection arms a
+  click the user makes themselves. Nothing waits on you.
+- **In conversation** (`rctd_reference_builder_wf`, `rctd_wf`, the mergers, the demuxes,
+  `fastq_concatenator_wf`), render the picker **in the same message as a question the user must
+  answer in chat anyway** — which reference to use, whether to launch, the `run_name`. Their reply is
+  the turn in which you read the picker's `.value`. Say in that message that they may also just tell
+  you the path; take whichever arrives, and prefer the picker if you get both.
+
+What you must not do is render an output-directory picker, say "let me know when you've picked one",
+and end the turn with nothing else pending. The user selects a directory, nothing happens, and after
+a few minutes they conclude you have hung — this step has already produced that stall.
+
+**Offer a directory the user has already chosen, when there is one.** If they gave an output
+directory earlier in this session for a different process — the Seeker `outdir`, the Trekker
+`output_dir`, the directory an earlier reference build wrote to — offer it as a reuse option rather
+than making them find it again:
+
+```python
+from lplots.widgets.ldata import w_ldata_picker
+
+# `latch:///Seeker_Output` came from the Seeker pipeline launch earlier in this session
+w_output_dir = w_ldata_picker(
+    label="Output directory",
+    file_type="dir",
+    default="latch:///Seeker_Output",   # only ever a directory the user themselves chose
+    key="rctd_output_dir",
+)
+```
+
+and name it in chat, so the prefill is visible to someone who never opens the tab:
+
+> I'll write the reference to `latch:///Seeker_Output` — the directory you used for the Seeker run —
+> unless you pick a different one in the **Output directory** picker in the new tab, or just tell me
+> the path here.
+
+With more than one prior directory, list them in a `w_radio_group` above the picker, with a final
+option that means "somewhere else" and leaves the picker to decide.
+
+**When no output directory has been specified yet, offer no options at all.** Render the bare picker
+with no `default`, and ask the user to select one. Do not invent a plausible path, do not fall back
+to a workflow's own built-in default (`latch:///RCTD_Output` and friends), and do not quietly reuse
+the source H5AD's directory — none of those were chosen by the user, and a wrong default they do not
+notice is worse than an empty field. The attach button, which is a real alternative for *input*
+files, is not one here: it uploads a file, it does not name a destination.
 
 ## Telling the user where results appeared
 
@@ -167,6 +291,84 @@ sits next to the thing it is pointing at. Either way, never imply the view will 
 This applies to `steps/` analyses and to the `wf/` parameter-entry, launch, and resume-button cells
 alike. It matters most for anything the user must **click** — a launch button or a resume button
 sitting in an unopened tab is the same as no button at all.
+
+## Rendering figures — one variable per plot
+
+A tab that renders more than one plot — QC (histogram, removed-bead spatial plot, knee plot),
+dimensionality reduction (scree plot, one UMAP per parameter set), background removal (density
+histogram, before/after spatial), cell typing (dot plot plus one violin per cell type) — will show
+the **same figure in every slot** if those figures share a variable name.
+
+`w_plot` takes its `source` as a named global and resolves it when the tab renders, not when the
+call runs. Two `fig = ...` bindings in one cell leave a single object under that name, so both
+widgets draw it. Nothing errors: the tab comes up with the right number of plots under the right
+labels, all showing the last one. It reads as an analysis problem, not a naming one.
+
+- **Never bind a figure to `fig`.** Every figure gets its own descriptive global —
+  `fig_qc_genes_hist`, `fig_qc_genes_spatial`, `fig_umi_knee`, `fig_dimred_scree`, `fig_umap_n40`.
+  One name, one figure, one `w_plot`, for the life of the notebook. Do not rebind a figure name in a
+  later cell either — a re-run of the earlier cell will then redraw the wrong plot.
+- **Capture the figure explicitly.** `fig_x, ax = plt.subplots()`, draw on `ax`, then
+  `w_plot(source=fig_x)`. Bare `plt.scatter(...)`, `series.hist(...)`, and `plt.show()` draw into
+  implicit global state — there is nothing to hand `w_plot`, and whatever the next cell draws lands
+  on the same canvas. For scanpy dot and violin plots pass `return_fig=True, show=False`, call
+  `.show()`, then take `.fig`.
+- **No loops over plots, and no `globals()`.** Where a step wants one plot per cluster or per cell
+  type (`steps/cell_typing.md`, `steps/diff_gene_expression.md`), write the names out explicitly or
+  put every panel into one figure with subplots. Dynamic names are the same collision with more
+  indirection.
+- **Give each `w_plot` an explicit unique `key`**, the way the input widgets already do
+  (`key="qc_min_genes"` in `steps/qc.md`), so widget identity does not ride on call order.
+
+**This does not conflict with "one cutoff variable per metric" in `steps/qc.md`.** That rule governs
+values feeding a *computation* — one `min_genes`, one `removed` mask, so the plot and the summary
+cannot disagree. This one governs objects feeding a *widget*. Share the scalar, never share the
+figure: a single QC cell holds one cutoff variable and three separately named figures.
+
+The same hazard applies to any object handed to a widget — a `df` reused across two `w_table` calls,
+or an `adata` rebound between two `w_h5` viewers, collapses the same way.
+
+## Launching a workflow at most once
+
+A Seeker test session started **two RCTD deconvolutions ten seconds apart**, both of which ran to
+completion on Latch compute at full cost. Nobody asked for two. The sequence was:
+
+```
+Cell "Launch RCTD" failed          ← the registered wf_name was wrong, as its doc warns
+Edited cell "Launch RCTD"          ← the edit RE-RAN the cell → execution #1
+Ran cell "Launch RCTD"             ← the agent, unsure it had launched → execution #2, 8s later
+```
+
+Nothing about that is exotic — it is what fixing a broken cell looks like. The trap is that
+`w_workflow(automatic=True)` launches on *every* run of its cell, and **in Plots, editing a cell
+runs it**. Five rules:
+
+1. **Call `launch_workflow_once` from `takara.launch`, never `w_workflow` directly**, for anything
+   in `wf/`. It derives the widget key from a hash of the parameters and asks Latch whether a
+   matching execution is already in flight before it renders anything, so a repeat launch is a no-op
+   with an explanation instead of a second run. Widget keys alone cannot do this: they do not
+   survive the agent rewriting the cell, a pod restart, or a second agent turn.
+2. **Keep the fix-and-retry loop out of the launch cell.** Resolve `wf_name`/`version`, build
+   `params`, and validate them in a *separate earlier cell* that contains no launch call. Iterate
+   there freely — it starts nothing. This is the one rule that would have prevented the incident
+   above on its own.
+3. **Editing a launch cell runs it.** Never follow an edit of a launch cell with an explicit run.
+4. **Never re-run a launch cell to find out whether it worked.** Read the workflows executions tab,
+   Latch Data, or `takara.launch.find_live_executions(wf_name)` — all of which observe without
+   launching. A launch cell that "ran successfully" has launched.
+5. **One launch cell per workflow per notebook.** If it needs changing, edit that cell. Never create
+   a second `w_workflow` cell for the same workflow and never invent a fresh key (`rctd_run_2`,
+   `rctd_run_final`) to force a relaunch — a changed *parameter* is what authorizes a new run.
+
+Read `res.status` and respond to what it says rather than assuming a launch happened:
+`LAUNCHED` (started), `BLOCKED_RUNNING` (already in flight — name the existing execution, do not
+retry), `ALREADY_COMPLETE` (point at the resume button), `DEGRADED` (the duplicate check could not
+reach Latch, so the button rendered disarmed — the user clicks it), `LAUNCH_ARMED` (`automatic=False`,
+waiting on a click).
+
+**A repeated confirmation is not a request for a second run.** "Yes", "go ahead", "continue", and
+"is it running?" all arrive when a user cannot see what is happening. Check for a live execution
+before acting on any of them.
 
 ## Long-running workflows
 
@@ -211,18 +413,32 @@ step is self-contained — the Seeker and Trekker QC report — the button perfo
 happy path needs no agent turn at all. Never promise the user that you will "resume from where you
 left off": you cannot, and saying so is what makes them sit and wait.
 
+**The resume cell must surface every path a later step needs, not just the one it acts on.** Once the
+launch cell stops binding an execution result, that cell's rendered output is the only record of the
+run's outputs that survives a pod restart — so a path it does not print is a path nobody has. The
+Seeker and Trekker buttons open the QC report, but each must also print the run's H5AD
+(`<sample>_anndata.h5ad` / `<sample_id>_ConfPositioned_anndata_matched.h5ad`), because
+`steps/data_loading.md` needs it hours later and has no other source. A user who is asked to locate a
+file the pipeline they just launched produced will reasonably conclude the agent lost their run.
+
 **Never construct an output path from a guess.** Each workflow doc's `<outputs>` section records the
 directory layout that workflow actually writes, verified against the deployment source in
 `latch_platform/`. Read it before looking for a result file. Two rules follow from it:
 
 - **Anchor at the output directory the user chose** and search downward for the file by suffix
-  (`_Report.html`, `_RCTD.h5ad`, `.fastq.gz`), rather than assembling a full path from the
+  (`_Report.html`, `_anndata.h5ad`, `_anndata_matched.h5ad`, `_RCTD.h5ad`, `.fastq.gz`), rather than assembling a full path from the
   parameters. Run directories are nested more deeply than the parameters suggest — Trekker puts
   `<analysis_date>_<sample_id>/trekker_<sample_id>/output/` between `output_dir` and the report — and
   a constructed path that is wrong reports "the pipeline hasn't finished" for a run that succeeded.
 - **Filenames are not always what the parameter names imply.** Trekker's report is
   `<sample_id>_Trekker_Report.html` for the standard report and `<sample_id>_Report.html` only for the
   extended one, so match a suffix and prefer the expected variant.
+- **A suffix can match more than one file, and the extras are not equivalent.** Trekker writes three
+  `*_anndata_matched.h5ad` files — plain, `_Positioned_`, and `_ConfPositioned_` — holding
+  progressively more filtered bead sets, with the first two under `output/intermediates/`. Only
+  `_ConfPositioned_` in `output/` is the secondary-analysis input. When a suffix search can return
+  siblings, rank them explicitly and demote anything under `intermediates/`; loading the wrong one
+  raises no error and silently changes the results.
 
 **Determining that a workflow has finished.** The execution runs on Latch compute, outside this pod,
 so the notebook can never tell you its status. Never claim a workflow is still running because a cell
@@ -248,3 +464,7 @@ If `latch-workflows`, `latch-plots-ui`, or `latch-data-access` are available, pr
 - Latch Data path handling
 
 If those sibling skills are not available, use the local `wf/`, `steps/`, and `README.md` docs directly.
+
+"Rendering figures — one variable per plot" above is **local and unconditional** — it holds whether
+or not `latch-plots-ui` loaded, and the local `steps/` docs do not restate it. When `latch-plots-ui`
+is available it remains the reference for `w_plot` arguments and the scanpy `.fig` conversion.

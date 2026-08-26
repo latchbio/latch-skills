@@ -12,12 +12,8 @@ Ask the user for the location of their tissue image file. This is almost always 
 ### Step 2 — Load the image and align
 Using the **same `w_h5` viewer session opened in `steps/data_loading.md`** (which must already be opened with `sync_to` set to the source H5AD's `LPath` — see that doc), load the image file into the viewer and open the built-in alignment tool to register the image to the bead/spot coordinates. The tool performs the rotation/scale/translation fit interactively — the agent's job is to launch it with the right inputs and confirm the result looks correct (beads land on tissue, not background) before calling the overlay complete. If alignment looks off, tell the user and let them re-run the tool rather than declaring success.
 
-The alignment tool is hands-on and lives in the viewer's tab, so the user cannot do this step from
-wherever they are currently looking. Tell them which tab to switch to before asking them to align —
-see "Telling the user where results appeared" in `SKILL.md`:
-
-> Your H&E image is loaded and the alignment tool is open in the **viewer tab** — click that tab in
-> the notebook and drag the image until the beads land on tissue. Tell me when it looks right.
+Tell the user which tab to switch to *before* asking them to align — see `<new_tab_notice>` below for
+the wording.
 
 ### Step 3 — Persist the alignment
 Because the viewer was opened with `sync_to=h5ad_path`, the alignment performed in the viewer is written back to the source H5AD automatically — there is no separate save step to run. Confirm with the user that the alignment is complete before moving on, since edits sync as they happen in the viewer.
@@ -36,3 +32,15 @@ Because the viewer was opened with `sync_to=h5ad_path`, the alignment performed 
 - After alignment, beads visually fall on tissue regions rather than background; if they don't, flag it to the user and offer to re-run the alignment tool instead of treating the step as done.
 - The user was told, in chat, which tab to switch to in order to run the alignment tool.
 </self_eval_criteria>
+
+<new_tab_notice>
+The alignment tool is hands-on and lives in the viewer's tab, so the user cannot do this step from
+wherever they are currently looking. Tell them which tab to switch to before asking them to align —
+see "Telling the user where results appeared" in `SKILL.md`:
+
+> Your H&E image is loaded and the alignment tool is open in the **viewer tab** — click that tab in
+> the notebook and drag the image until the beads land on tissue. Tell me when it looks right.
+
+This is the same tab `steps/data_loading.md` opened, not a new one — say "the viewer tab" rather than
+"a new tab" so the user does not go hunting for a second one.
+</new_tab_notice>

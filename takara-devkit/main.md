@@ -28,6 +28,10 @@ Applies to every step in every plan below: each analysis opens in its **own tab*
 notebook does not switch to it. Whenever a step produces a tab, say so in your chat message — name
 the tab and say what is in it — before moving on. See "Telling the user where results appeared" in
 `SKILL.md` for the wording, and each step doc's `<new_tab_notice>` for a step-specific example.
+
+A step that renders more than one plot into its tab must give each figure its own variable. A shared
+`fig` makes every plot in the tab show the last one, with no error — see "Rendering figures — one
+variable per plot" in `SKILL.md`.
 </pre_analysis_step>
 
 <plan id="primary_analysis" label="Primary Analysis">
@@ -40,7 +44,7 @@ the tab and say what is in it — before moving on. See "Telling the user where 
 1b. Image Overlay (*always offer, optional*) -> `steps/image_overlay.md`
 2. Background Removal (*Seeker ONLY*) -> `steps/background_removal.md`
 3. Quality Control + Filtering -> `steps/qc.md`
-3b. RCTD Cell Type Deconvolution (*Seeker ONLY, optional*) -> `steps/rctd.md`
+3b. RCTD Cell Type Deconvolution (*Seeker ONLY, recommended — user may skip*) -> `steps/rctd.md`
 4. Normalization -> `steps/normalization.md`
 5. Feature Selection -> `steps/feature_selection.md`
 6. Dimensionality Reduction -> `steps/dimensionality_reduction.md`
@@ -48,7 +52,7 @@ the tab and say what is in it — before moving on. See "Telling the user where 
 8. Differential Gene Expression -> `steps/diff_gene_expression.md`
 9. Cell Type Annotation -> `steps/cell_typing.md`
 
-Step 3b (RCTD) is an **optional, Seeker-only** reference-based track that runs on the QC-filtered raw counts. It is **separate from** the steps 4–9 track (normalization → clustering → DEG → annotation), which run unchanged whether or not RCTD is used. Offer it after QC; if the user declines, skip straight to step 4. When RCTD is run, its per-bead labels are written into `adata.obs` and consumed at step 9 to label and validate Leiden clusters — complementing, not replacing, marker-based annotation.
+Step 3b (RCTD) is a **Seeker-only** reference-based track that runs on the QC-filtered raw counts. **Always recommend it, and always at this position** — after step 3 (QC + Filtering) and before step 4 (Normalization) — because RCTD needs raw counts and normalization overwrites `.X`. Recommend it in the same message that offers the skip: the user may decline, and if they do, go straight to step 4 without re-asking. Steps 4–9 (normalization → clustering → DEG → annotation) are a separate track and run unchanged either way. When RCTD is run, its per-bead labels are written into `adata.obs` and consumed at step 9 to label and validate Leiden clusters — complementing, not replacing, marker-based annotation. **Once RCTD is launched, stop the track at step 3b until it finishes** — do not start step 4. Steps 4–8 would run correctly, but they end at step 9, which needs RCTD's labels, and they fill the kernel with results that a pod shutdown would lose. Pausing at 3b costs nothing: the QC-filtered object is already on Latch, so the user can shut the pod down while RCTD runs and reload one file on return. See `<hard_stop>` in `steps/rctd.md`; the user may override and work ahead if they ask. Step 9 enforces the precondition in code either way — `takara.annotation.require_rctd_for_annotation` raises for Seeker data with RCTD outstanding, and warns for Seeker data annotated without it (`<guard>` in `steps/cell_typing.md`). For Trekker data none of this applies: RCTD is not recommended there, its absence is not a shortfall, and step 9 proceeds on markers alone with no waiting and no warning.
 </plan>
 
 <plan id="visualization_only" label="Visualization Only">
@@ -58,4 +62,6 @@ Step 3b (RCTD) is an **optional, Seeker-only** reference-based track that runs o
 </plan>
 
 <self_eval_criteria>
+- No tab renders two plots with identical content — every `w_plot` in a multi-plot tab draws a
+  distinctly named figure variable, and no figure is bound to `fig`
 </self_eval_criteria>

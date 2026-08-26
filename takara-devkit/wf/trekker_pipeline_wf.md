@@ -128,18 +128,44 @@ Verified against the deployment source (`latch_platform/curiotrekker`), not infe
     ├── log/
     └── trekker_<sample_id>/
         ├── output/                       # ← the results you want
-        │   ├── <sample_id>_Trekker_Report.html     # the QC report
+        │   ├── <sample_id>_Trekker_Report.html                  # the QC report
+        │   ├── <sample_id>_ConfPositioned_anndata_matched.h5ad  # ← secondary analysis input
+        │   ├── <sample_id>_ConfPositioned_seurat_spatial.rds
         │   ├── <sample_id>_summary_metrics.csv
         │   ├── <sample_id>_variable_features_clusters.csv
         │   ├── <sample_id>_variable_features_spatial_moransi.txt
-        │   ├── <sample_id>_ConfPositioned_seurat_spatial.rds
         │   └── intermediates/
+        │       ├── <sample_id>_anndata_matched.h5ad             # NOT for secondary analysis
+        │       ├── <sample_id>_Positioned_anndata_matched.h5ad  # NOT for secondary analysis
+        │       ├── <sample_id>_seurat_spatial.rds
+        │       └── <sample_id>_Positioned_seurat_spatial.rds
         └── misc/<tile_id>/
 ```
 
 **Report filename.** `genreport.R:22-27` emits `<sample_id>_Trekker_Report.html` for the standard
 report and `<sample_id>_Report.html` for the extended one — so match on the `_Report.html` **suffix**
 rather than an exact name, and prefer the `_Trekker_` variant.
+
+**H5AD filename — Trekker writes three, and only one is the right input.**
+`trekker-v1.4.0/common/analysis.R:604-606` (the tree that actually runs —
+`wf/nuclei_locater_docker.sh:24` pins `SCRIPT_DIR="/root/trekker-v1.4.0"`) converts three Seurat
+objects with `sceasy::convertFormat`, in ascending order of filtering:
+
+| File | Written to | Seurat object |
+|---|---|---|
+| `<sample_id>_anndata_matched.h5ad` | `output/intermediates/` | all matched beads |
+| `<sample_id>_Positioned_anndata_matched.h5ad` | `output/intermediates/` | positioned beads |
+| `<sample_id>_ConfPositioned_anndata_matched.h5ad` | `output/` | **confidently** positioned beads |
+
+`analysis.R:414` sets `intermediates_dir <- file.path(outdir, "intermediates")`, and `outdir` is
+argument 6 — `TREKKEROUT_MAIN`, i.e. `output/` (`nuclei_locater_docker.sh:145`). So the
+`ConfPositioned` h5ad sits in `output/` beside the `.rds` of the same name, and is the one to hand to
+secondary analysis; the other two are intermediates.
+
+This matters because a bare `_anndata_matched.h5ad` suffix search matches **all three**. Rank as the
+report does: prefer the `_ConfPositioned_` variant, and prefer a hit in `output/` over one under
+`intermediates/`. Loading an intermediate silently analyses the wrong bead set — no error, just
+different results.
 
 Two things here are easy to get wrong and have already caused a failed run: the
 `<analysis_date>_<sample_id>` directory sits between `output_dir` and everything else, and the report
@@ -154,10 +180,13 @@ pipeline by clicking the button that the launch cell renders.
 
 Rules for the launch cell:
 
-- Call `w_workflow(...)` **unconditionally at the top level of the cell.** Never place it inside an
-  `if`, a `try`, or a loop body that can be skipped, and never withhold it because the widget values
-  still look empty. An unrendered `w_workflow` is a missing launch button — that is the failure mode
-  this pattern exists to prevent.
+- Call `launch_workflow_once(...)` — never `w_workflow` directly — **unconditionally at the top
+  level of the cell.** Never place it inside an `if`, a `try`, or a loop body that can be skipped,
+  and never withhold it because the widget values still look empty. An unrendered launch call is a
+  missing launch button — that is the failure mode this pattern exists to prevent. The helper guards
+  against launching a run that is already in flight, and skips that check entirely while
+  `readonly=True`, so it costs nothing on the reactive re-runs this cell does on every keystroke.
+  See "Launching a workflow at most once" in `SKILL.md`.
 - Pass `automatic=False` so the workflow launches on click instead of firing the moment the cell
   runs. **This deliberately overrides the `automatic=True` default in `latch-workflows/SKILL.md`**,
   which assumes params are hard-coded rather than entered through widgets. For the Trekker and
@@ -166,7 +195,12 @@ Rules for the launch cell:
 - Collect the file and directory parameters with `w_ldata_picker` (`file_type="file"` / `"dir"`).
   Its `.value` is an `LPath` or `None` — build `LatchFile` / `LatchDir` conditionally from
   `.value.path` (see the example). Calling `.path` on `None`, or `LatchFile("")`, raises and kills
-  the cell before `w_workflow` is reached, which removes the button.
+  the cell before the launch call is reached, which removes the button.
+- **The output directory is a picker like any other, and never a guess.** If the user named an output
+  directory earlier in this session, pass it as `w_output_dir`'s `default=` and say so in chat; if
+  they did not, leave `default` unset rather than filling in a plausible path. With multiple
+  reactions, each gets its own picker (and its own key) — reactions may share a directory, but that
+  is the user's call to make, not yours. See "Asking for an output directory" in `SKILL.md`.
 - Include the `w_text_output(...)` long-running notice inside `if execution is not None:`. The click
   lands after your turn ends, so a chat message you would "display after launching" never happens —
   the cell has to render it. See `<long_running_guidance>`.
@@ -231,6 +265,7 @@ w_sc_outdir = w_ldata_picker(
     label="Single-cell platform output directory (sc_outdir)", file_type="dir",
     key="trekker_sc_outdir",
 )
+# add default="latch://..." only when the user has already chosen an output directory this session
 w_output_dir = w_ldata_picker(
     label="Output directory", file_type="dir", key="trekker_output_dir",
 )
@@ -241,7 +276,8 @@ attach, set the picker's `default` to the attached `latch://` path so the cell s
 
 **Cell 2, launch:**
 ```python
-from lplots.widgets.workflow import w_workflow
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
 
@@ -273,16 +309,18 @@ params = {
 }
 
 # ALWAYS called — never inside a conditional, or the launch button will not render
-w = w_workflow(
+res = launch_workflow_once(
     wf_name="wf.__init__.trekker_pipeline_wf",
-    key="trekker_workflow_run_1",
     version="1.4.11-909971",
     params=params,
+    label="Launch Trekker workflow",
+    key_prefix="trekker_workflow",  # key is derived from params — do NOT pass a hand-written key
+    run_name=f"{params['analysis_date']}_{params['sample_id']}",   # the run dir Trekker writes
+    output_dir=params["output_dir"],
     automatic=False,                # user clicks the button to launch
     readonly=not params_ready,      # button disabled until every field is set
-    label="Launch Trekker workflow",
 )
-execution = w.value
+execution = res.execution
 
 if execution is not None:
     # The long-running notice MUST be rendered here, by the cell itself. The click happens
@@ -318,32 +356,47 @@ from lplots.widgets.text import w_text_output
 
 resume = w_button(label="Show my QC report", key="trekker_resume")
 
-# reading .value makes this cell reactive — the click re-runs it
-if resume.value:
-    # re-derived from the widgets, not from the launch cell's variables
+# Re-derived from the widgets, not from the launch cell's variables. Picker values are LPath or
+# None, and after a pod restart the parameter cell may not have been re-run at all — so never call
+# .path unguarded (same rule as the launch cell).
+try:
     out_root = LPath(w_output_dir.value.path.rstrip("/"))
     sample_v = w_sample_id.value or ""
     date_v = (w_analysis_date.value or "").replace("-", "")      # params use YYYYMMDD
+except (AttributeError, NameError):
+    out_root, sample_v, date_v = None, "", ""
 
-    def _reports(root: LPath, depth: int) -> list[LPath]:
-        """Every *_Report.html at or below root. Bounded; tolerates files and missing dirs."""
+# reading .value makes this cell reactive — the click re-runs it
+if resume.value and out_root is None:
+    w_text_output(
+        content=(
+            "I don't have the output directory for this run. Re-run the parameter cell above, set "
+            "**Output directory**, **Sample ID** and **Analysis date**, then click this button again."
+        ),
+        appearance={"message_box": "warning"},
+        key="trekker_resume_no_params",
+    )
+elif resume.value:
+
+    def _by_suffix(root: LPath, suffix: str, depth: int) -> list[LPath]:
+        """Every file ending in `suffix` at or below root. Bounded; tolerates files and missing dirs."""
         found: list[LPath] = []
         try:
             entries = list(root.iterdir())
         except Exception:          # not a directory, or not created yet
             return found
         for p in entries:
-            name = p.path.rsplit("/", 1)[-1]
-            if name.endswith("_Report.html"):
+            if p.path.rsplit("/", 1)[-1].endswith(suffix):
                 found.append(p)
             elif depth > 1:
-                found.extend(_reports(p, depth - 1))
+                found.extend(_by_suffix(p, suffix, depth - 1))
         return found
 
     # Fast path: the layout the deployed workflow actually writes (see <outputs>). Falls back to a
     # bounded search from output_dir, so a layout change costs speed, not correctness.
+    # Both the report and the h5ad live in this same output/ directory.
     known = LPath(f"{out_root.path}/{date_v}_{sample_v}/trekker_{sample_v}/output")
-    hits = _reports(known, 1) or _reports(out_root, 6)
+    hits = _by_suffix(known, "_Report.html", 1) or _by_suffix(out_root, "_Report.html", 6)
 
     # Prefer this sample's report, and the standard "_Trekker_Report.html" over the extended one.
     # Rank on the FILENAME, not the full path — the run directory itself usually contains the
@@ -354,6 +407,30 @@ if resume.value:
 
     hits.sort(key=_rank)
     report = hits[0] if hits else None
+
+    # The h5ad for secondary analysis. Located here, next to the report, because this cell's output
+    # is the ONLY record of its location that survives a pod restart — the launch cell binds no
+    # execution result. See <resuming>.
+    #
+    # Trekker writes THREE *_anndata_matched.h5ad files and only the _ConfPositioned_ one in
+    # output/ is the right input; the other two are under output/intermediates/ and hold
+    # less-filtered bead sets (see <outputs>). Rank both ways — an intermediate loads without
+    # error and silently analyses the wrong beads.
+    h5_hits = (
+        _by_suffix(known, "_anndata_matched.h5ad", 1)
+        or _by_suffix(out_root, "_anndata_matched.h5ad", 6)
+    )
+
+    def _rank_h5(p: LPath) -> tuple[bool, bool, bool]:
+        name = p.path.rsplit("/", 1)[-1]
+        return (
+            "_ConfPositioned_anndata_matched.h5ad" not in name,   # the confidently-positioned one
+            "/intermediates/" in p.path,                          # never an intermediate
+            not name.startswith(f"{sample_v}_"),                  # this sample's
+        )
+
+    h5_hits.sort(key=_rank_h5)
+    h5ad = h5_hits[0] if h5_hits else None
 
     if report is None:
         w_text_output(
@@ -382,11 +459,23 @@ if resume.value:
             except Exception as e:
                 note = f"\n\n_Images were not optimized ({e!r}), so the report may load slowly._"
 
+        # Printing the h5ad path is not decoration — it is how the path reaches the next step.
+        # Keep it in the same message as the report link so it is on screen whenever the user
+        # asks to continue.
+        if h5ad is not None:
+            h5ad_line = f"Counts matrix for secondary analysis: `{h5ad.path}`\n\n"
+        else:
+            h5ad_line = (
+                "_No `*_anndata_matched.h5ad` found under the run directory — if you continue to "
+                "secondary analysis I'll ask you where it is._\n\n"
+            )
+
         w_text_output(
             content=(
                 "**Trekker pipeline complete.** "
                 f"[Open the QC report](https://console.latch.bio/data/{link.node_id()})\n\n"
-                "Message me when you've looked it over and we'll continue with secondary analysis."
+                + h5ad_line
+                + "Message me when you've looked it over and we'll continue with secondary analysis."
                 + note
             ),
             appearance={"message_box": "success"},
@@ -408,8 +497,15 @@ doc — paste it into the cell above the button. Four notes:
   the deployed workflow actually writes; the fast path uses it and the bounded search is the safety
   net. Matching an exact filename you assembled yourself is what produced
   "No `continue_3_Report.html` under .../continue_3/continue_3" — two wrong guesses at once.
-- If `iterdir()` is unavailable in the runtime, replace `_reports` with `w_ldata_browser(dir=out_root)`
-  and have the user select the report; everything downstream is unchanged.
+- **This cell must locate the h5ad, not just the report** — and the *right* h5ad. The launch cell no
+  longer binds an execution result, so nothing else in the notebook knows where
+  `<sample_id>_ConfPositioned_anndata_matched.h5ad` is. Printing its path here is what lets
+  `steps/data_loading.md` skip its "ask the user" branch after a pod restart. Rank the
+  `_ConfPositioned_` variant first and demote anything under `intermediates/`; the wrong pick
+  analyses a less-filtered bead set with no error to show for it.
+- If `iterdir()` is unavailable in the runtime, replace `_by_suffix` with
+  `w_ldata_browser(dir=out_root)` and have the user select the files; everything downstream is
+  unchanged.
 
 **Multiple reactions:** render **one resume button per reaction**, each with its own
 `key=f"trekker_resume_{i}"`, label `f"Show my QC report — reaction {i}"`, and that reaction's own
@@ -420,7 +516,8 @@ Multiple reactions (one button per reaction, each launching independently). Buil
 entry widgets per reaction in cell 1 — same widgets as above, with `key` suffixed by the
 reaction number — then in cell 2:
 ```python
-from lplots.widgets.workflow import w_workflow
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 from lplots.widgets.text import w_text_output
 from latch.types import LatchFile, LatchDir
 
@@ -443,18 +540,21 @@ executions = []
 for i, params in enumerate(all_params, start=1):
     ready_i = all(v not in (None, "") for v in params.values())
 
-    # ALWAYS called for every reaction — one button each
-    w = w_workflow(
+    # ALWAYS called for every reaction — one button each. Each reaction's params differ, so the
+    # derived keys differ too; do not add `i` to key_prefix to force that.
+    res_i = launch_workflow_once(
         wf_name="wf.__init__.trekker_pipeline_wf",
-        key=f"trekker_workflow_run_{i}",
         version="1.4.11-909971",
         params=params,
+        label=f"Launch Trekker workflow — reaction {i}",
+        key_prefix="trekker_workflow",
+        run_name=f"{params['analysis_date']}_{params['sample_id']}",
+        output_dir=params["output_dir"],
         automatic=False,
         readonly=not ready_i,
-        label=f"Launch Trekker workflow — reaction {i}",
     )
-    if w.value is not None:
-        executions.append(w.value)
+    if res_i.execution is not None:
+        executions.append(res_i.execution)
 
         # one notice per launched reaction — rendered by the cell, not by the agent
         w_text_output(
@@ -527,6 +627,15 @@ anything else — treat that as a resume signal and check Latch Data *before* an
   click the button they just bypassed — same steps as cell 3, then continue to
   `steps/view_report.md`'s follow-up question. Do not ask the user to re-confirm that the pipeline
   finished.
+- **Never ask the user where the h5ad is.** You launched this run, so its location is derivable:
+  `<output_dir>/<analysis_date>_<sample_id>/trekker_<sample_id>/output/<sample_id>_ConfPositioned_anndata_matched.h5ad`,
+  with the parameters still in the widgets (`w_output_dir`, `w_analysis_date`, `w_sample_id` — they
+  persist by `key` across a pod restart) and cell 3's rendered output as a second source. Find it the
+  same way cell 3 does — fast path, then a bounded `_anndata_matched.h5ad` suffix search ranked to
+  prefer `_ConfPositioned_` and reject `intermediates/` — and hand the resulting `LPath` straight to
+  `steps/data_loading.md` step 1b. Fall back to the picker in step 1a **only** when that search
+  genuinely comes up empty, and say so when you do, rather than asking as though you never had the
+  information.
 </resuming>
 
 <takara_lib_import>
@@ -541,12 +650,17 @@ from pathlib import Path
 
 # Checked first, in order. If the skill is deployed somewhere else, add that path here.
 _TAKARA_HINTS = (
-    "/opt/latch/plots-faas/runtime/mount/agent_config/context/technology_docs/takara/lib",
+    "/opt/latch/plots-faas/.claude/skills/takara-devkit/lib",
+    "/opt/latch/plots-faas/.claude/skills/latch-skills/takara-devkit/lib",
 )
 # Searched only if no hint matches. Most specific first — an rglob over a large tree is slow.
+# `agent_config/context/technology_docs` is deliberately absent: it holds a frozen pre-monorepo
+# snapshot of this devkit (see <legacy_technology_docs_path> in SKILL.md) that imports cleanly
+# and runs months-old code. It has no optimize_html_images.py, so it would miss anyway — but do
+# not add it back as a convenience for other imports.
 _TAKARA_SEARCH_ROOTS = (
-    "/opt/latch/plots-faas/runtime/mount",
-    "/opt/latch",
+    "/opt/latch/plots-faas/.claude/skills",
+    "/opt/latch/plots-faas",
     "/root",
 )
 

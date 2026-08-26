@@ -19,6 +19,12 @@ Merge Trekker pipeline outputs from multiple single-nuclei reactions into a sing
 - **New merged output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Directory on Latch where the merged results will be saved.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same
+    message as the other parameters you are collecting in chat. Prefill `default=` with a directory
+    the user chose earlier in this session (the Trekker run's own `output_dir` is the obvious
+    candidate) and name it in chat; offer no default if there is none. With one merger run per tile
+    group, each group needs its own directory — render one picker per group, keyed distinctly. See
+    "Asking for an output directory" in `SKILL.md`.
 </parameters>
 
 <outputs>
@@ -43,8 +49,10 @@ Only generate and execute the code cell below once the user confirms.
 <example>
 ```python
 from dataclasses import dataclass
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
+
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
 
 @dataclass
 class TrekkerOutput:
@@ -63,25 +71,32 @@ params = {
         ),
         # add one TrekkerOutput entry per reaction to merge
     ],
-    "sample_ID": "",                                   # required — merged output prefix (no '.' or spaces)
-    "output_directory": LatchDir("latch://..."),       # required — set by user
+    "sample_ID": SAMPLE_ID,                            # required — merged output prefix (no '.' or spaces)
+    "output_directory": LatchDir(OUTPUT_DIR),          # required — set by user
 }
 
-w = w_workflow(
+res = launch_workflow_once(
     wf_name="trekker_merger",
-    key="trekker_merger_run_1",
     version="1.4.6-0eab98",
     params=params,
-    automatic=True,
     label="Trekker Merger",
+    key_prefix="trekker_merger",   # key is derived from params — do NOT pass a hand-written key
+    run_name=SAMPLE_ID,
+    output_dir=OUTPUT_DIR,
+    automatic=True,
 )
-execution = w.value
 
-if execution is not None:
-    res = await execution.wait()
+if res.status is LaunchStatus.LAUNCHED:
+    done = await res.execution.wait()
 
-    if res is not None and res.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
+    if done is not None and done.status in {"SUCCEEDED", "FAILED", "ABORTED"}:
         # inspect workflow outputs for downstream analysis
-        workflow_outputs = list(res.output.values())
+        workflow_outputs = list(done.output.values())
+elif res.status is LaunchStatus.BLOCKED_RUNNING:
+    # Already merging. Do not relaunch, and do not re-run this cell to check.
+    print(res.existing.describe())
 ```
+
+`SAMPLE_ID` and `OUTPUT_DIR` are the values the user chose; pass them into `params` and into the
+launch guard rather than repeating literals, so the guard's record lands beside the outputs.
 </example>

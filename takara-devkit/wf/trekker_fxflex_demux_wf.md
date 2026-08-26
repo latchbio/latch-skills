@@ -44,6 +44,10 @@ Once chemistry (and the optional labeling approach) are resolved, proceed to col
 - **Output directory** → `output_directory` (`LatchOutputDir`, **required**)
   - Destination directory on Latch where demultiplexed files will be written.
   - Must be provided by the user — do not use a default or placeholder value.
+  - Ask for it with a `w_ldata_picker` (`file_type="dir"`), not as free text, rendered in the same
+    message as the other parameters you are collecting in chat. Prefill `default=` with a directory
+    the user chose earlier in this session and name it in chat; offer no default if there is none.
+    See "Asking for an output directory" in `SKILL.md`.
 - **Sample labels** → `sample_labels` (`List[LabelInfo]`, optional)
   - A samplesheet with one row per sample, entered manually. Each row (`LabelInfo`) maps a **sample name** to the **barcode ID** that sample was multiplexed under.
   - Optional: leave empty to name outputs by their barcode ID, or supply a `sample_manifest` file instead.
@@ -84,11 +88,16 @@ For each detected sample (barcode), the workflow writes to `output_directory`:
 </outputs>
 
 <example>
+Generate **three cells** — resolve, launch, resume — in the same turn. The resolve/launch split
+exists because `automatic=True` fires an execution on every run of its cell, and in Plots editing a
+cell runs it; keeping the parameter work in a cell with no launch call in it means a retry costs
+nothing. See "Launching a workflow at most once" in `SKILL.md`.
+
+**Cell 1, resolve and validate — cannot launch anything.**
 ```python
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
-from lplots.widgets.workflow import w_workflow
 from latch.types import LatchFile, LatchDir
 
 
@@ -103,10 +112,14 @@ class Chemistry(Enum):
     FLEX_v1 = "v1"
 
 
+WF_NAME = "wf.__init__.trekker_fxflex_demux"
+VERSION = "1.1.1-c72111"
+OUTPUT_DIR = "latch://..."                            # required — set by user
+
 params = {
     "fastq_r1": LatchFile("latch://..."),             # required — set by user
     "fastq_r2": LatchFile("latch://..."),             # required — set by user
-    "output_directory": LatchDir("latch://..."),      # required — set by user
+    "output_directory": LatchDir(OUTPUT_DIR),         # required
     "chemistry": Chemistry.FLEX_v2_APEX,              # FLEX_v2_APEX (default) or FLEX_v1
     "sample_labels": [                                 # barcode -> sample name mapping
         LabelInfo(sample_name="TumorSample", barcode_id="A-A01"),
@@ -117,21 +130,33 @@ params = {
     # "sample_manifest": LatchFile("latch://..."),
 }
 
-w = w_workflow(
-    wf_name="wf.__init__.trekker_fxflex_demux",
-    key="trekker_fxflex_demux_run_1",
-    version="1.1.1-c72111",
-    params=params,
-    automatic=True,
-    label="TrekkerFX_FLEX demux",
-)
-execution = w.value
-
-# Do NOT `await execution.wait()` here — the partitioner runs for a long time and the user is told
-# they may shut the notebook pod down. Check for outputs with the results cell below. See <resuming>.
+print("WORKFLOW PARAMETERS:")
+for k, v in params.items():
+    print(f"  {k}: {v}")
 ```
 
-**Resume cell** — generate and run it in the same turn as the launch cell, so the button is on screen
+**Cell 2, launch.** One call, nothing else — so it never needs editing.
+```python
+# resolve takara/lib per SKILL.md "Helper library usage", then:
+from takara.launch import LaunchStatus, launch_workflow_once
+
+res = launch_workflow_once(
+    wf_name=WF_NAME,
+    version=VERSION,
+    params=params,
+    label="TrekkerFX_FLEX demux",
+    key_prefix="trekker_fxflex_demux",   # key is derived — do NOT pass a hand-written key
+    output_dir=OUTPUT_DIR,               # no run_name: this workflow writes straight into output_dir
+    automatic=True,
+)
+print(res.status.value, res.message)
+
+# Do NOT `await res.execution.wait()` here — the partitioner runs for a long time and the user is
+# told they may shut the notebook pod down. Check for outputs with the resume cell below.
+# See <resuming>.
+```
+
+**Cell 3, resume** — generate and run it in the same turn as the launch cell, so the button is on screen
 before the user walks away. Clicking it re-runs *this cell in the kernel*; no agent turn is involved,
 which matters because nothing in Plots can start one. It reads Latch Data rather than kernel state, so
 it also survives a pod restart:
