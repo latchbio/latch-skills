@@ -69,9 +69,9 @@ Workflow, with a subdirectory per run or project:
 - Fragments (from FASTQ): `/fastq2frags/[Run_ID]/chromap_output/fragments.tsv.gz`
 - Fragments (from CRAM): `/cram2frags/[project_name]/fragments.sort.bed.gz`
 - Spatial: `/spatials/[Run_ID]/spatial`
-- Downstream-ready (SnapATAC2): `/atac_analysis_snap/[project_name]/`
-- Downstream-ready (ArchR): `/atac_analysis_archr/[project_name]/`
-- Optimization sweeps: `/atac_optimize_snap/[project_name]/`, `/atac_optimize_archr/[project_name]/`
+- Downstream-ready (SnapATAC2): `/epi_analysis_snap/[project_name]/`
+- Downstream-ready (ArchR): `/epi_analysis_archr/[project_name]/`
+- Optimization sweeps: `/epi_optimize_snap/[project_name]/`, `/epi_optimize_archr/[project_name]/`
 - Comparisons: `/compare_outs/[project_name]/`
 
 Raw FASTQs are not delivered by default; the **filtered** FASTQs from
@@ -87,10 +87,17 @@ absent, fall back to these:
 |---|---|
 | `/chromap_outs/[Run_ID]/chromap_output/` | `/fastq2frags/[Run_ID]/chromap_output/` |
 | `/Images_spatial/[Run_ID]/spatial` | `/spatials/[Run_ID]/spatial` |
-| `/snap_outs/[project_name]/` | `/atac_analysis_snap/[project_name]/` |
-| `/snap_opts/[project_name]/` | `/atac_optimize_snap/[project_name]/` |
-| `/ArchRProjects/[project_name]/` | `/atac_analysis_archr/[project_name]/` |
-| `/optimize_outs/[project_name]/` | `/atac_optimize_archr/[project_name]/` |
+| `/snap_outs/[project_name]/` | `/epi_analysis_snap/[project_name]/` |
+| `/snap_opts/[project_name]/` | `/epi_optimize_snap/[project_name]/` |
+| `/ArchRProjects/[project_name]/` | `/epi_analysis_archr/[project_name]/` |
+| `/optimize_outs/[project_name]/` | `/epi_optimize_archr/[project_name]/` |
+| `/atac_optimize_snap/[project_name]/` | `/epi_optimize_snap/[project_name]/` |
+| `/atac_optimize_archr/[project_name]/` | `/epi_optimize_archr/[project_name]/` |
+
+The `atac_optimize_*` names were live only briefly, so few projects use them.
+Note there is **no** `atac_analysis_*` to fall back on — the analysis Workflows
+went straight from the legacy names to `epi_analysis_*`, so don't go looking for
+one.
 
 Collaborator workspaces previously grouped by stage rather than Workflow:
 - Fragments: `.../Raw_Data/[Run_ID]/chromap_output/fragments.tsv.gz`

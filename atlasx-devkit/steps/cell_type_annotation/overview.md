@@ -13,7 +13,13 @@ Ask user:
 - Unsatisfactory clusters OR want fast (~minutes per sample) → **Gene Set Scoring** (`steps/cell_type_annotation/gene_set_scoring.md`)
 - Good clusters AND can wait >30 minutes → **Cluster-based** (`steps/cell_type_annotation/cluster_based.md`)
 
-## Input: `*_sm_ge.h5ad` (gene activity scores)
+## Input: `combined_ge.h5ad` (gene activity scores)
+
+Use the **full** object, not `combined_sm_ge.h5ad`. Both annotation approaches
+compute on `.X` — cluster-based runs 1-vs-all DE, gene set scoring scores marker
+panels — and the `_sm` objects are `float16` with counts and layers stripped, so
+scores and marker rankings computed on them are unreliable. Load `_sm` only to
+view or plot.
 
 ## CellGuide Databases
 

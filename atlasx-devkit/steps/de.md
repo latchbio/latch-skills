@@ -8,6 +8,11 @@ Compare differences in genes, peaks, and motifs between user-defined cluster/con
 - Inspect the user's input folder and automatically load any `combined_sm_ge.h5ad` file found into an AnnData object.
 - Visualize H5AD file with `w_h5`
 
+`_sm` is the right object **here** — it is only being browsed to read `obs` and
+pick barcodes, and the differential testing itself runs inside the
+`archrproject` Workflow on the full data. Don't carry this object over into
+local DE, marker detection, or cell typing; use `combined_ge.h5ad` for those.
+
 Create groupings dictionary with "groupA" and "groupB" barcode lists based on user's comparison request (e.g., by condition, sample, or cluster). Save as JSON and upload to Latch Data as LatchFile.
 
 ### Formatting Correct Input to `archrproject`

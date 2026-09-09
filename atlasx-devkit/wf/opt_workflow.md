@@ -33,7 +33,7 @@ Assess DBiT-seq epigenomic experiment quality and systematically explore cluster
 </parameters>
 
 <outputs>
-Output directory: `/atac_optimize_snap/[project_name]/`  (legacy: `/snap_opts/`)
+Output directory: `/epi_optimize_snap/[project_name]/`  (legacy: `/snap_opts/`, briefly `/atac_optimize_snap/`)
 - `combined.h5ad`: the shared combined AnnData (tile matrix, filters, spatial coords)
 - `figures/`: `all_umaps.png`, `all_spatialdim.png`, `spatial_qc.png`, `tss_frags.png` — one page per parameter set
 - `all_umaps.html`, `all_spatialdim.html`, `spatial_qc.html`: browsable galleries for side-by-side comparison of sets

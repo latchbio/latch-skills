@@ -32,9 +32,9 @@ Workflow, with a subdirectory per run or project.
 - Fragments (from FASTQ): `/fastq2frags/[Run_ID]/chromap_output/fragments.tsv.gz`
 - Fragments (from CRAM): `/cram2frags/[project_name]/fragments.sort.bed.gz`
 - Spatial: `/spatials/[Run_ID]/spatial`
-- Downstream-analysis ready (SnapATAC2): `/atac_analysis_snap/[project_name]/`
-- Downstream-analysis ready (ArchR): `/atac_analysis_archr/[project_name]/`
-- Optimization sweeps: `/atac_optimize_snap/[project_name]/`, `/atac_optimize_archr/[project_name]/`
+- Downstream-analysis ready (SnapATAC2): `/epi_analysis_snap/[project_name]/`
+- Downstream-analysis ready (ArchR): `/epi_analysis_archr/[project_name]/`
+- Optimization sweeps: `/epi_optimize_snap/[project_name]/`, `/epi_optimize_archr/[project_name]/`
 - Comparisons: `/compare_outs/[project_name]/`
 
 Raw FASTQs are not delivered by default; the **filtered** FASTQs from
@@ -43,21 +43,35 @@ preprocessing are under `/fastq2frags/[Run_ID]/filtered_fastqs/`.
 ### Output Layout
 
 ```
-atac_analysis_snap/[project_name]/
+epi_analysis_snap/[project_name]/
 ├── anndata/            # all .h5ad objects
-├── seurat_objects/     # all .rds objects
+├── seurat_objects/     # all .rds objects, incl. seqlogo.rds
+├── {cluster,sample,condition}_coverage/  # bedgraph browser tracks
 ├── tables/             # analysis tables, medians, params, embeddings
 ├── figures/
 └── Launch_Plots/artifact.json
 
-atac_analysis_archr/[project_name]/
+epi_analysis_archr/[project_name]/
 ├── [project_name]_ArchRProject/          # ArchR project (R-based analysis)
-├── anndata/, seurat_objects/
+├── anndata/
+├── seurat_objects/                       # .rds objects, seqlogo.rds, [run_id]_BP/
 ├── {cluster,sample,condition}_coverages/ # BigWig tracks
 ├── {cluster,sample,condition}_peak_beds/
 ├── tables/, figures/
 └── Launch_Plots/artifact.json
 ```
+
+**Two things to know about these directories**
+
+- `seurat_objects/[run_id]_BP/` appears only on very large projects, where the
+  combined matrix exceeds R's `2^31 - 1` sparse limit and is backed by BPCells
+  on disk instead. `combined.rds` **references these by path**, so it will fail
+  to load if they aren't alongside it — move or download `seurat_objects/` as a
+  unit, never `combined.rds` on its own.
+- `checkpoints/` is present only after a **failed** run. It holds durable
+  intermediates for recovery and is deleted automatically once every
+  result-producing task succeeds — so its presence means the run did not finish,
+  and the outputs above may be incomplete.
 
 **Key Analysis Files** (under `anndata/`)
 
@@ -88,10 +102,16 @@ Additional outputs:
 |---|---|
 | `/chromap_outs/[Run_ID]/chromap_output/` | `/fastq2frags/[Run_ID]/chromap_output/` |
 | `/Images_spatial/[Run_ID]/spatial` | `/spatials/[Run_ID]/spatial` |
-| `/snap_outs/[project_name]/` | `/atac_analysis_snap/[project_name]/` |
-| `/snap_opts/[project_name]/` | `/atac_optimize_snap/[project_name]/` |
-| `/ArchRProjects/[project_name]/` | `/atac_analysis_archr/[project_name]/` |
-| `/optimize_outs/[project_name]/` | `/atac_optimize_archr/[project_name]/` |
+| `/snap_outs/[project_name]/` | `/epi_analysis_snap/[project_name]/` |
+| `/snap_opts/[project_name]/` | `/epi_optimize_snap/[project_name]/` |
+| `/ArchRProjects/[project_name]/` | `/epi_analysis_archr/[project_name]/` |
+| `/optimize_outs/[project_name]/` | `/epi_optimize_archr/[project_name]/` |
+| `/atac_optimize_snap/[project_name]/` | `/epi_optimize_snap/[project_name]/` |
+| `/atac_optimize_archr/[project_name]/` | `/epi_optimize_archr/[project_name]/` |
+
+The `atac_optimize_*` names were live only briefly, so few projects use them.
+There is **no** `atac_analysis_*` — the analysis Workflows went straight from the
+legacy names to `epi_analysis_*`.
 
 Collaborator workspaces previously grouped by stage:
 - Fragments: `.../Raw_Data/[Run_ID]/chromap_output/fragments.tsv.gz`
